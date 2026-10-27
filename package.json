@@ -1,0 +1,14 @@
+{
+  "name": "kerfin",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @kerfin/desktop",
+    "build": "npm run build -w @kerfin/desktop",
+    "test": "npm test -w @kerfin/core",
+    "typecheck": "npm run typecheck --workspaces"
+  }
+}

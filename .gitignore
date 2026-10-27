@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Downloaded by `kerfin-engine woob-modules --install`
+engine/vendor/
+
+node_modules/
+dist/
+build/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/engine-dist/
+apps/desktop/src-tauri/gen/
+*.local
+.claude/

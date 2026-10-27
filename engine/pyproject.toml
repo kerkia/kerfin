@@ -1,0 +1,45 @@
+[project]
+name = "kerfin-engine"
+version = "0.1.0"
+description = "Kerfin engine: connectors, sync and storage for the Kerfin personal finance app"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    # Woob's PyPI releases lag far behind its site fixes, so the core is pinned to a git
+    # commit and scripts/fetch_woob_modules.py fetches the modules of that same commit.
+    "woob @ git+https://gitlab.com/woob/woob.git@7fac0c30cf8fba36f1e8fbe7293f43d600d4854d",
+    "platformdirs>=4.2",
+    "rich>=13,<14",
+    # Needed by the apivie module (its requirements.txt wrongly names it "jwt").
+    "pyjwt>=2",
+    "cryptography>=44",
+]
+
+[project.scripts]
+kerfin-engine = "kerfin_engine.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kerfin_engine"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

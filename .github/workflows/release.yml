@@ -1,0 +1,83 @@
+# Every push to main is tested, then built and published as a release. Installed apps
+# pick it up through the updater (latest.json on the latest GitHub release).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - name: Engine tests
+        working-directory: engine
+        run: |
+          uv sync --frozen
+          uv run ruff check src tests
+          uv run kerfin-engine woob-modules --install
+          uv run pytest -q
+
+  release:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: npm ci
+
+      - name: Set version
+        id: version
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < VERSION).${{ github.run_number }}"
+          uv run --no-project python scripts/set_version.py "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build the bundled engine
+        run: uv run --no-project python scripts/build_engine.py
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: v${{ steps.version.outputs.version }}
+          releaseName: Kerfin ${{ steps.version.outputs.version }}
+          releaseBody: |
+            Installed copies of Kerfin update themselves.
+            New install: download the `-setup.exe` file below and run it (no admin rights needed).
+          releaseDraft: false
+          prerelease: false
