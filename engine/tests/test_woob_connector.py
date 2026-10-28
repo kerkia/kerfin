@@ -287,3 +287,31 @@ def test_bank_modules_include_major_banks() -> None:
         "banquepopulaire",
     } <= modules
     assert "linebourse" not in modules  # a building block of other modules, without settings
+
+
+SYLVEA_LOGIN_FORM = """<html><body>
+<form id="loginForm" name="loginForm" method="post" action="/securite/login.xhtml?cid=1">
+<input type="hidden" name="loginForm" value="loginForm" />
+<input id="loginForm:name" type="text" name="loginForm:name" value="" />
+<input id="loginForm:password" type="password" name="loginForm:password" value="" />
+<input id="loginForm:testLogin" type="submit" name="loginForm:testLogin" value="Se connecter" />
+<input type="hidden" name="jakarta.faces.ViewState" value="state" />
+</form></body></html>"""
+
+
+@pytest.mark.skipif(not paths.woob_modules_dir().is_dir(), reason="Woob modules not installed")
+def test_spirica_login_submits_the_current_button(monkeypatch: pytest.MonkeyPatch) -> None:
+    connector = WoobConnector("spirica", {"login": "user", "password": "secret"})
+    browser = connector._backend.browser
+    response = requests.Response()
+    response._content = SYLVEA_LOGIN_FORM.encode()
+    response.url = "https://www.sylvea.fr/securite/login.xhtml"
+    response.headers["Content-Type"] = "text/html"
+    response.encoding = "utf-8"
+    sent: list[requests.Request] = []
+    monkeypatch.setattr(browser, "location", lambda request, **_: sent.append(request))
+
+    browser.login.klass(browser, response).login("user", "secret")
+
+    assert sent[0].data["loginForm:testLogin"] == "Se connecter"
+    assert sent[0].data["loginForm:name"] == "user" and "loginForm:login" not in sent[0].data
