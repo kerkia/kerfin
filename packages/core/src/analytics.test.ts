@@ -6,6 +6,7 @@ import {
   accountHistory,
   changeOver,
   changeSince,
+  groupAccounts,
   portfolioChange,
   rangeStart,
   netWorth,
@@ -170,5 +171,22 @@ describe("portfolio change", () => {
       from: "2026-10-01",
       partial: false,
     });
+  });
+});
+
+describe("account groups", () => {
+  it("groups counted accounts, largest first, and skips those without a key", () => {
+    const accounts = [
+      account("a", "life_insurance", "300", { insurer: "Spirica" }),
+      account("b", "retirement", "100", { insurer: "Spirica" }),
+      account("c", "life_insurance", "600", { insurer: "Suravenir" }),
+      account("d", "savings", "50"),
+    ];
+    const groups = groupAccounts(accounts, (a) => a.insurer);
+    expect(groups.map((g) => [g.key, g.total, g.share])).toEqual([
+      ["Suravenir", 600, 0.6],
+      ["Spirica", 400, 0.4],
+    ]);
+    expect(groups[1]!.accounts.map((a) => a.id)).toEqual(["a", "b"]);
   });
 });

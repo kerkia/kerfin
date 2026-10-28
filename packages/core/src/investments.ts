@@ -65,16 +65,87 @@ const CLASS_PATTERNS: [RegExp, AssetClass][] = [
   [/mon[ée]taire|money.market|tr[ée]sorerie|\bcash\b|liquidit/i, "money_market"],
   [/obligat|\bbonds?\b|\bcredit\b|cr[ée]dit|treasury|aggregate|high.yield|govt|government|\btaux\b/i, "bonds"],
   [/flexible|patrimoine|allocation|diversifi|mixed|multi.?asset|[ée]quilibr|prudent|dynamique|balanced/i, "mixed"],
-  [/\bgold\b|\bor\b|commodit|mati[èe]res premi/i, "commodities"],
   [/crypto|bitcoin|ethereum/i, "crypto"],
   [/equity|equities|\bactions?\b|stock|share|msci|s&p|nasdaq|stoxx|cac|ftse|dow|nikkei|topix|small.?cap|\betf\b/i, "equities"],
 ];
 
+/** What a fund is specifically about, when it is about a resource. */
+export const THEMES = [
+  "precious_metals",
+  "miners",
+  "energy",
+  "rare_earths",
+  "uranium",
+  "industrial_metals",
+  "agriculture",
+  "clean_energy",
+  "broad_commodities",
+] as const;
+export type Theme = (typeof THEMES)[number];
+
+// Tried in order: the most specific first, companies before the resource they extract.
+const THEME_PATTERNS: [RegExp, Theme][] = [
+  [/rare.earth|terres? rares|strategic metal|critical (metal|material|mineral)|lithium|battery (metal|tech)/i, "rare_earths"],
+  [/uranium/i, "uranium"],
+  [/clean energy|renewable|[ée]nergies? (renouvelable|propre)|solar|wind energy|hydrogen/i, "clean_energy"],
+  [/miners?\b|mining|gold ?bugs|mines? d'or|aurif|junior gold/i, "miners"],
+  [/\bgold\b|\bsilver\b|platinum|palladium|precious metal|m[ée]taux pr[ée]cieux|\bor physique\b/i, "precious_metals"],
+  [/\boil\b|brent|\bwti\b|crude|p[ée]trole|natural gas|gaz naturel|\benergy\b|[ée]nergie/i, "energy"],
+  [/copper|cuivre|nickel|alumin|\bzinc\b|industrial metal|base metal|m[ée]taux industriels/i, "industrial_metals"],
+  [/(?<!ex[- ]?)agri|grains?\b|wheat|livestock/i, "agriculture"],
+  [/commodit|mati[èe]res premi[èe]res/i, "broad_commodities"],
+];
+
+// Themes whose funds own the resource (or contracts on it) unless they hold companies.
+const RESOURCE_THEMES: ReadonlySet<Theme> = new Set([
+  "precious_metals",
+  "energy",
+  "industrial_metals",
+  "agriculture",
+  "broad_commodities",
+]);
+const COMPANY_HINT = /equity|equities|\bactions?\b|msci|s&p|stoxx|ftse|sector|producers|companies|miners?\b|mining/i;
+const PHYSICAL_HINT = /physical|physique|\betc\b/i;
+// The sector of funds that hold companies of one industry.
+const THEME_SECTORS: Partial<Record<Theme, string>> = {
+  miners: "Materials",
+  rare_earths: "Materials",
+  industrial_metals: "Materials",
+  uranium: "Energy",
+  energy: "Energy",
+};
+
+export function themeOf(holding: MarketHolding, security?: SecurityInfo): Theme | null {
+  if (security?.quote_type === "EQUITY") return null; // a company share, not a fund
+  const text = `${holding.label} ${holding.security_type ?? ""}`;
+  return THEME_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? null;
+}
+
 export function assetClass(holding: MarketHolding, security?: SecurityInfo): AssetClass {
   if (security?.quote_type === "EQUITY") return "equities";
   const text = `${holding.label} ${holding.security_type ?? ""}`;
+  // A fund of gold miners holds companies (equities); a physical gold ETC holds metal.
+  const theme = themeOf(holding, security);
+  if (theme && RESOURCE_THEMES.has(theme)) {
+    return COMPANY_HINT.test(text) && !PHYSICAL_HINT.test(text) ? "equities" : "commodities";
+  }
+  if (theme) return PHYSICAL_HINT.test(text) ? "commodities" : "equities";
   for (const [pattern, kind] of CLASS_PATTERNS) if (pattern.test(text)) return kind;
   return security?.quote_type === "ETF" ? "equities" : "other";
+}
+
+/** Holdings by theme, in euros, largest first, with the total of all holdings. */
+export function themes(market: Market): { slices: { key: Theme; value: number }[]; total: number } {
+  const totals = new Map<Theme, number>();
+  let total = 0;
+  for (const holding of market.holdings) {
+    const value = amount(holding.valuation);
+    if (value <= 0) continue;
+    total += value;
+    const theme = themeOf(holding, holding.isin ? market.securities[holding.isin] : undefined);
+    if (theme) totals.set(theme, (totals.get(theme) ?? 0) + value);
+  }
+  return { slices: [...totals].map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value), total };
 }
 
 /** The index a fund follows or resembles, from its name (equity funds only). */
@@ -144,6 +215,11 @@ export function composition(
       dimension === "countries" ? security.country : security.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
     return key ? { [key]: 1 } : null;
   }
+  // Funds of one industry's companies (gold miners...) sit in that industry's sector; their
+  // countries aren't known.
+  const theme = themeOf(holding, security);
+  const themeSector = theme && assetClass(holding, security) === "equities" ? THEME_SECTORS[theme] : undefined;
+  if (themeSector) return dimension === "sectors" ? { [themeSector]: 1 } : null;
   const index = indexOf(holding, market.indices, security);
   if (!index) return null;
   const weights = index[dimension];

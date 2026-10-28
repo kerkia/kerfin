@@ -318,10 +318,12 @@ export function DonutLegend({
   onActive,
   selected,
   onSelect,
+  showValues,
 }: {
   slices: DonutSlice[];
   active: string | null;
   onActive: (key: string | null) => void;
+  showValues?: boolean; // amounts beside the shares
 } & Pickable) {
   const max = Math.max(...slices.map((s) => s.share), 0.0001);
   return (
@@ -342,6 +344,7 @@ export function DonutLegend({
             <span className="legend-bar" style={{ width: `${(slice.share / max) * 100}%`, background: slice.color }} />
           </span>
           <span role="cell" className="num small secondary">
+            {showValues && <span className="legend-amount">{money(slice.value, "EUR", { maximumFractionDigits: 0 })}</span>}
             {percent(slice.share)}
           </span>
         </div>

@@ -228,3 +228,31 @@ export const INSURED_KINDS: ReadonlySet<AccountKind> = new Set(["life_insurance"
 export function accountInsurer(account: Account): string | null {
   return INSURED_KINDS.has(account.kind) ? (account.insurer ?? account.insurer_suggested) : null;
 }
+
+export interface AccountGroup {
+  key: string;
+  accounts: Account[]; // largest first
+  total: number; // in BASE_CURRENCY
+  share: number; // of all groups' total, 0..1
+}
+
+/** Counted accounts in groups (by insurer, by type...), largest group first. */
+export function groupAccounts(accounts: Account[], keyOf: (account: Account) => string | null): AccountGroup[] {
+  const groups = new Map<string, Account[]>();
+  for (const account of countedAccounts(accounts).filter(inBase)) {
+    const key = keyOf(account);
+    if (key !== null) groups.set(key, [...(groups.get(key) ?? []), account]);
+  }
+  const all = [...groups.values()].flat().reduce((sum, a) => sum + amount(a.balance), 0);
+  return [...groups]
+    .map(([key, members]) => {
+      const total = members.reduce((sum, a) => sum + amount(a.balance), 0);
+      return {
+        key,
+        accounts: members.sort((a, b) => amount(b.balance) - amount(a.balance)),
+        total,
+        share: all ? total / all : 0,
+      };
+    })
+    .sort((a, b) => b.total - a.total);
+}

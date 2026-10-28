@@ -12,8 +12,10 @@ import {
   pricedHoldings,
   rangeStart,
   returns,
+  themeOf,
+  themes,
 } from "@kerfin/core";
-import type { Account, AccountKind, AssetClass, Breakdown, Market, Range } from "@kerfin/core";
+import type { Account, AccountKind, AssetClass, Breakdown, Market, Range, Theme } from "@kerfin/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { BarList, Donut, DonutLegend, LineChart, donutSlices } from "../components/charts";
@@ -26,7 +28,7 @@ const CURRENCIES = ["EUR", "USD", "GBP", "CHF"] as const;
 const OTHER = "__other"; // the folded rest of a breakdown
 
 interface Pick {
-  dimension: "class" | "countries" | "sectors";
+  dimension: "class" | "countries" | "sectors" | "themes";
   key: string;
   label: string;
   shown?: string[]; // for OTHER: the keys shown separately, which it excludes
@@ -36,6 +38,9 @@ interface Pick {
 function exposure(market: Market, holding: Market["holdings"][number], kind: AssetClass, pick: Pick): number | null {
   if (pick.dimension === "class") {
     return pick.key === OTHER ? (pick.shown?.includes(kind) ? 0 : 1) : kind === pick.key ? 1 : 0;
+  }
+  if (pick.dimension === "themes") {
+    return themeOf(holding, holding.isin ? market.securities[holding.isin] : undefined) === pick.key ? 1 : 0;
   }
   const shares = composition(market, holding, pick.dimension);
   if (!shares) return null;
@@ -120,6 +125,7 @@ export function InvestmentsPage() {
       ),
       classesTotal: classes.reduce((sum, c) => sum + c.value, 0),
       countries: breakdown(scoped, "countries"),
+      themes: themes(scoped),
       sectors: breakdown(scoped, "sectors"),
       // Securities listed without a value are shown too, for their information.
       rows: scoped.holdings
@@ -129,6 +135,7 @@ export function InvestmentsPage() {
           const pricedHolding = priced.find((p) => p.holding === holding);
           return {
             holding,
+            theme: themeOf(holding, security),
             kind: assetClass(holding, security),
             index: indexOf(holding, scoped.indices, security),
             returns: pricedHolding ? returns(scoped, pricedHolding, currency, start) : null,
@@ -278,7 +285,7 @@ export function InvestmentsPage() {
         )}
       </section>
 
-      <div className="grid-3">
+      <div className="grid-2">
         <section className="card">
           <div className="card-header">
             <h2>{t("inv.assetClasses")}</h2>
@@ -314,6 +321,32 @@ export function InvestmentsPage() {
           selected={pick?.dimension === "sectors" ? pick.key : null}
           onSelect={(key, label, shown) => toggle({ dimension: "sectors", key, label, shown })}
         />
+        <section className="card">
+          <div className="card-header">
+            <h2>{t("inv.themes")}</h2>
+          </div>
+          {figures.themes.slices.length ? (
+            <>
+              <BarList
+                slices={figures.themes.slices.map((s) => ({
+                  key: s.key,
+                  value: s.value,
+                  share: s.value / (figures.themes.total || 1),
+                }))}
+                label={(key) => t(`theme.${key as Theme}`)}
+                selected={pick?.dimension === "themes" ? pick.key : null}
+                onSelect={(key) => toggle({ dimension: "themes", key, label: t(`theme.${key as Theme}`) })}
+              />
+              <p className="muted small" style={{ margin: "10px 0 0" }}>
+                {t("inv.themesHelp")}
+              </p>
+            </>
+          ) : (
+            <p className="muted small" style={{ margin: 0 }}>
+              {t("inv.noThemes")}
+            </p>
+          )}
+        </section>
       </div>
 
       <section className="card">
@@ -347,7 +380,7 @@ export function InvestmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ holding, kind, index, returns: r, share }, i) => (
+              {rows.map(({ holding, kind, theme, index, returns: r, share }, i) => (
                 <tr key={`${holding.account_id}-${holding.isin ?? holding.label}-${i}`}>
                   <td>
                     <div>
@@ -359,6 +392,7 @@ export function InvestmentsPage() {
                   </td>
                   <td>
                     <span className="tag">{t(`class.${kind as AssetClass}`)}</span>
+                    {theme && <div className="muted small theme-note">{t(`theme.${theme}`)}</div>}
                   </td>
                   <td className="small secondary">
                     {index ? (

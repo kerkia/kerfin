@@ -967,3 +967,23 @@ th:hover .sort-mark.idle {
   font-size: 12.5px;
   cursor: pointer;
 }
+
+/* Totals in a row, and grouped account tables */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 650;
+  margin: 2px 0;
+}
+.group-table td.indented {
+  padding-left: 22px;
+}
+.legend-amount {
+  margin-right: 10px;
+  color: var(--text);
+}

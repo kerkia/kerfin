@@ -227,7 +227,7 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
               active={active}
               onActive={setActive}
             />
-            <DonutLegend slices={figures.slices} active={active} onActive={setActive} />
+            <DonutLegend slices={figures.slices} active={active} onActive={setActive} showValues />
           </div>
         </section>
       </div>

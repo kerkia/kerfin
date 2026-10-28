@@ -9,6 +9,8 @@ import {
   indexOf,
   pricedHoldings,
   returns,
+  themeOf,
+  themes,
 } from "./investments";
 import type { IndexProfile, Market, MarketHolding } from "./investments";
 
@@ -160,5 +162,32 @@ describe("exposure of one holding", () => {
     expect(composition(m, m.holdings[0]!, "countries")).toEqual({ "United States": 0.75, Japan: 0.05, Other: 0.2 });
     expect(composition(m, m.holdings[1]!, "sectors")).toEqual({ "Information Technology": 1 });
     expect(composition(m, m.holdings[2]!, "countries")).toBeNull();
+  });
+});
+
+describe("themes", () => {
+  const cases: [string, string, string | null][] = [
+    ["Amundi NYSE Arca Gold Bugs UCITS ETF", "equities", "miners"],
+    ["VanEck Gold Miners UCITS ETF", "equities", "miners"],
+    ["iShares Physical Gold ETC", "commodities", "precious_metals"],
+    ["WisdomTree Brent Crude Oil", "commodities", "energy"],
+    ["iShares MSCI World Energy Sector UCITS ETF", "equities", "energy"],
+    ["VanEck Rare Earth and Strategic Metals UCITS ETF", "equities", "rare_earths"],
+    ["Global X Uranium UCITS ETF", "equities", "uranium"],
+    ["Amundi Bloomberg Equal-Weight Commodity ex-Agriculture UCITS ETF", "commodities", "broad_commodities"],
+    ["iShares Global Clean Energy UCITS ETF", "equities", "clean_energy"],
+    ["Amundi MSCI World UCITS ETF", "equities", null],
+  ];
+  it.each(cases)("%s is %s, theme %s", (name, kind, theme) => {
+    const h = holding(name, "1");
+    expect(assetClass(h)).toBe(kind);
+    expect(themeOf(h)).toBe(theme);
+  });
+
+  it("puts miners in the Materials sector and leaves their countries unknown", () => {
+    const m = market({ holdings: [holding("Amundi NYSE Arca Gold Bugs UCITS ETF", "100")], securities: {}, prices: {} });
+    expect(composition(m, m.holdings[0]!, "sectors")).toEqual({ Materials: 1 });
+    expect(composition(m, m.holdings[0]!, "countries")).toBeNull();
+    expect(themes(m)).toEqual({ slices: [{ key: "miners", value: 100 }], total: 100 });
   });
 });
