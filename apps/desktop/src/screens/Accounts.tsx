@@ -115,7 +115,17 @@ export function Accounts() {
 function ConnectionStatus({ connection }: { connection: Connection }) {
   if (!connection.last_sync_at) return <span className="status">{t("accounts.neverSynced")}</span>;
   if (connection.last_status !== "ok") {
-    return <span className="status error">{errorText(connection.last_status)}</span>;
+    return (
+      <>
+        <span className="status error">{errorText(connection.last_status)}</span>
+        {connection.last_error && (
+          <details className="error-details">
+            <summary className="muted small">{t("accounts.errorDetails")}</summary>
+            <code className="small">{connection.last_error}</code>
+          </details>
+        )}
+      </>
+    );
   }
   return <span className="status ok">{t("accounts.syncedAgo", { when: ago(connection.last_sync_at) })}</span>;
 }

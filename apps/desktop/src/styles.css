@@ -521,3 +521,18 @@ table.table {
   margin: 0 auto;
   border-radius: 8px;
 }
+
+.error-details {
+  margin-top: 6px;
+  max-width: 60ch;
+}
+.error-details summary {
+  cursor: pointer;
+}
+.error-details code {
+  display: block;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

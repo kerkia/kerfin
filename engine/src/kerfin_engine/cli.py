@@ -156,7 +156,11 @@ def cmd_probe(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     from kerfin_engine import server
 
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, stream=sys.stderr)
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        stream=sys.stderr,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     server.serve(args.port, args.watch_stdin)
     return 0
 

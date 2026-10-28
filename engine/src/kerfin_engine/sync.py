@@ -168,6 +168,14 @@ class SyncService:
         except _Cancelled:
             job.state = JobState.CANCELLED
         except ConnectorError as error:
+            # The trace of an unexpected error shows where a website's pages changed.
+            log.warning(
+                "Sync of %s failed: %s %s",
+                job.connection_id,
+                error.code,
+                error.detail,
+                exc_info=error.code is ErrorCode.UNEXPECTED,
+            )
             job.error_code, job.error_detail = error.code, error.detail
             job.state = JobState.FAILED
             self._record_failure(job.connection_id, error.code, error.detail)

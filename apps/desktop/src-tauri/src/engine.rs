@@ -86,7 +86,7 @@ fn launch(app: &AppHandle) -> Result<(EngineInfo, Child), String> {
     let data_dir = paths.app_local_data_dir().map_err(|e| e.to_string())?.join("data");
     let log_dir = paths.app_log_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
-    let log = File::create(log_dir.join("engine.log")).map_err(|e| e.to_string())?;
+    let log = open_log(&log_dir.join("engine.log")).map_err(|e| e.to_string())?;
 
     let mut command = engine_command(app)?;
     command
@@ -162,6 +162,17 @@ fn engine_command(app: &AppHandle) -> Result<Command, String> {
         return Ok(command);
     }
     Err(format!("Engine not found in {}", bundled.display()))
+}
+
+/// The engine log, kept across launches (an update restarts the app) and rotated at 1 MB.
+fn open_log(path: &Path) -> std::io::Result<File> {
+    const MAX_LOG_BYTES: u64 = 1024 * 1024;
+    if std::fs::metadata(path).is_ok_and(|meta| meta.len() > MAX_LOG_BYTES) {
+        let old = path.with_extension("old.log");
+        let _ = std::fs::remove_file(&old); // Windows can't rename onto an existing file
+        let _ = std::fs::rename(path, old);
+    }
+    std::fs::OpenOptions::new().create(true).append(true).open(path)
 }
 
 /// Windows paths without the `\\?\` prefix, which Python can't locate its library from.

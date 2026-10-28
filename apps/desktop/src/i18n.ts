@@ -47,6 +47,7 @@ const en = {
   "accounts.removeConfirm": "Remove {name} and all its data from Kerfin?",
   "accounts.manual": "Entered manually",
   "accounts.neverSynced": "Not synced yet",
+  "accounts.errorDetails": "Technical details",
   "accounts.syncedAgo": "Synced {when}",
   "accounts.noAccounts": "No accounts found yet.",
   "accounts.hidden": "Excluded from totals",
