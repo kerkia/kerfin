@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime
 from importlib import metadata
@@ -9,6 +10,7 @@ from importlib.machinery import ModuleSpec
 from itertools import islice
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 import requests
 from packaging.version import Version
@@ -213,6 +215,32 @@ def translate_error(error: Exception) -> ConnectorError:
     return ConnectorError(code, str(error))
 
 
+def where(backend: Any) -> str:
+    """Where the website had got to, to diagnose an unexpected error: the last page's address
+    and title, and the redirection it asked for. Parameter values are left out (they can
+    carry session tokens), except errors."""
+    response = getattr(getattr(backend, "_browser", None), "response", None)
+    if response is None:
+        return "no page loaded"
+    parts = [f"{response.status_code} at {_safe_url(response.url)}"]
+    if "html" in response.headers.get("Content-Type", ""):
+        title = re.search(r"<title[^>]*>(.*?)</title>", response.text[:50_000], re.S | re.I)
+        if title and title.group(1).strip():
+            parts.append(f"page {' '.join(title.group(1).split())!r}")
+    if location := response.headers.get("Location"):
+        parts.append(f"redirected to {_safe_url(location)}")
+    return ", ".join(parts)
+
+
+def _safe_url(url: str) -> str:
+    split = urlsplit(url)
+    params = parse_qsl(split.query, keep_blank_values=True) + parse_qsl(
+        split.fragment, keep_blank_values=True
+    )
+    shown = [f"{name}={value}" if name.startswith("error") else name for name, value in params]
+    return split.netloc + split.path + (f" [{', '.join(shown)}]" if shown else "")
+
+
 def _refused(error: Exception) -> bool:
     """An HTTP 403 or 429: typically bot protection (e.g. Cloudflare) turning the engine away."""
     response = getattr(error, "response", None) if isinstance(error, requests.exceptions.HTTPError) else None
@@ -365,7 +393,10 @@ class WoobConnector:
                 answer = interaction.ask(Prompt(key="auth_uri", label="Address shown after logging in"))
                 self._backend.config["auth_uri"].set(answer)
             except Exception as exc:
-                raise translate_error(exc) from exc
+                error = translate_error(exc)
+                if error.code is ErrorCode.UNEXPECTED:
+                    error = ConnectorError(error.code, f"{error.detail} ({where(self._backend)})")
+                raise error from exc
         raise ConnectorError(ErrorCode.INTERACTION_REQUIRED, "Too many login challenges in a row")
 
     def _require_interaction(self, challenge: Exception) -> InteractionHandler:

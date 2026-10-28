@@ -32,6 +32,7 @@ from kerfin_engine.connectors.woob_connector import (
     holding_from_woob,
     prompt_from_value,
     transaction_from_woob,
+    where,
 )
 from kerfin_engine.domain import AccountKind
 
@@ -315,3 +316,21 @@ def test_spirica_login_submits_the_current_button(monkeypatch: pytest.MonkeyPatc
 
     assert sent[0].data["loginForm:testLogin"] == "Se connecter"
     assert sent[0].data["loginForm:name"] == "user" and "loginForm:login" not in sent[0].data
+
+
+def test_where_shows_the_page_but_not_its_tokens() -> None:
+    response = requests.Response()
+    response.status_code = 302
+    response.url = "https://api.example.com/oauth/authorization-code?session_id=SECRET1"
+    response.headers["Location"] = "https://bank.example.com/mon-espace#session_id=SECRET2&error=locked"
+    response.headers["Content-Type"] = "text/html"
+    response._content = b"<html><head><title> Mon\n espace </title></head></html>"
+    backend = SimpleNamespace(_browser=SimpleNamespace(response=response))
+
+    shown = where(backend)
+
+    assert "SECRET" not in shown
+    assert shown == (
+        "302 at api.example.com/oauth/authorization-code [session_id], page 'Mon espace', "
+        "redirected to bank.example.com/mon-espace [session_id, error=locked]"
+    )
