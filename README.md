@@ -1,11 +1,12 @@
 # Kerfin
 
-A personal finance aggregator for family and friends: one place to see bank accounts,
-French life insurance (assurance-vie), PER, PEA, crowdfunding and crypto.
+A personal finance dashboard for family and friends: analyses, charts and tables of bank
+accounts, French life insurance (assurance-vie), PER, PEA, crowdfunding and crypto.
 
-Kerfin is a desktop app. Data is collected and stored **on each user's own computer**,
-encrypted with their passphrase; credentials never leave it. See
-[docs/architecture.md](docs/architecture.md).
+Kerfin is a desktop app. [Finary](https://finary.com) collects the accounts; Kerfin reads
+them through Finary's read-only connector each time it is unlocked, keeps its own history,
+and stores everything **on the user's own computer**, encrypted with their passphrase.
+Accounts Finary doesn't cover are entered by hand. See [docs/architecture.md](docs/architecture.md).
 
 ## Install
 

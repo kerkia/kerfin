@@ -1,15 +1,20 @@
-// Adding an account: pick an institution, then either log in (connected institutions) or
-// type the balance (everything else, until it gets a connector).
+// Adding an account: connect Finary (which collects the accounts linked there), or type
+// the balance of an account by hand.
 import type { Connection, Institution, Prompt } from "@kerfin/core";
 import { useEffect, useMemo, useState } from "react";
 
 import { useData } from "../data";
 import { EngineError, engine } from "../engine";
 import { KIND_OPTIONS, errorText, kindLabel, t } from "../i18n";
+import { FinaryConnect } from "./FinaryConnect";
 import { useJobs } from "./Jobs";
 import { Dialog, PromptInput, initialValues, promptError } from "./ui";
 
-type Step = { kind: "pick" } | { kind: "connect"; institution: Institution } | { kind: "manual"; name: string };
+type Step =
+  | { kind: "pick" }
+  | { kind: "finary" }
+  | { kind: "connect"; institution: Institution }
+  | { kind: "manual"; name: string };
 
 export function AddAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [step, setStep] = useState<Step>({ kind: "pick" });
@@ -20,6 +25,7 @@ export function AddAccount({ open, onClose }: { open: boolean; onClose: () => vo
   return (
     <Dialog open={open} onClose={close}>
       {step.kind === "pick" && <Pick onPick={setStep} onCancel={close} />}
+      {step.kind === "finary" && <FinaryConnect onBack={() => setStep({ kind: "pick" })} onDone={close} />}
       {step.kind === "connect" && (
         <ConnectForm institution={step.institution} onBack={() => setStep({ kind: "pick" })} onDone={close} />
       )}
@@ -36,7 +42,7 @@ function Pick({ onPick, onCancel }: { onPick: (step: Step) => void; onCancel: ()
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return institutions
-      .filter((i) => !q || `${i.name} ${i.products}`.toLowerCase().includes(q))
+      .filter((i) => i.offered && (!q || `${i.name} ${i.products}`.toLowerCase().includes(q)))
       .sort((a, b) => Number(b.implemented) - Number(a.implemented) || a.name.localeCompare(b.name));
   }, [institutions, query]);
 
@@ -58,9 +64,11 @@ function Pick({ onPick, onCancel }: { onPick: (step: Step) => void; onCancel: ()
             className="list-row"
             onClick={() =>
               onPick(
-                institution.implemented
-                  ? { kind: "connect", institution }
-                  : { kind: "manual", name: institution.name },
+                institution.connector === "finary"
+                  ? { kind: "finary" }
+                  : institution.implemented
+                    ? { kind: "connect", institution }
+                    : { kind: "manual", name: institution.name },
               )
             }
           >

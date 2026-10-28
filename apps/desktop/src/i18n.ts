@@ -67,6 +67,16 @@ const en = {
   "detail.updated": "Updated {when}",
 
   "add.title": "Add an account",
+  "finary.title": "Connect Finary",
+  "finary.intro":
+    "Kerfin reads the accounts you have linked in Finary, with read-only access: it can't change anything there, and your Finary password stays with Finary.",
+  "finary.how":
+    "Sign in on Finary's page in your browser and approve access. Kerfin then refreshes your data each time you unlock it.",
+  "finary.signIn": "Sign in with Finary",
+  "finary.waiting": "Finish signing in in your browser…",
+  "finary.noBrowser": "If no browser window opened, copy this address into your browser:",
+  "finary.copy": "Copy",
+  "finary.copied": "Copied",
   "add.search": "Search an institution",
   "add.connect": "Connect",
   "add.manualTag": "Enter by hand",
@@ -150,6 +160,8 @@ const kinds: Record<AccountKind, string> = {
 
 const errors: Record<string, string> = {
   invalid_credentials: "the login or password was refused",
+  sign_in_needed: "Finary needs you to sign in again (Update login)",
+  sign_in_cancelled: "access wasn't granted on Finary's page",
   action_needed: "the website needs you to do something first (log in on the website to see what)",
   interaction_required: "a confirmation is needed: sync again and keep Kerfin open",
   validation_failed: "the validation was refused or expired",

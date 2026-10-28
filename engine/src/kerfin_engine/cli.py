@@ -55,7 +55,7 @@ def _amount(value: Decimal | None, currency: str | None, redact: bool) -> str:
 
 def cmd_institutions(_: argparse.Namespace) -> int:
     table = Table("id", "institution", "products", "connector", "status")
-    for institution in institutions.catalog():
+    for institution in institutions.known():
         status = "[green]ready to test[/green]" if institution.implemented else "planned"
         table.add_row(institution.id, institution.name, institution.products, institution.connector, status)
     console.print(table)

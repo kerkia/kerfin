@@ -153,6 +153,10 @@ class SyncService:
                     params[prompt.key] = job.ask(prompt)
 
             connector = registry.open_connector(institution, params, job)
+            renewed = getattr(connector, "updated_secrets", None)
+            if renewed:
+                self._store.replace_secrets(job.connection_id, renewed)
+                self._on_change()
             collected = []
             for account in connector.accounts():
                 holdings = None

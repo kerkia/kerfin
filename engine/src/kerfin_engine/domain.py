@@ -39,6 +39,8 @@ class Account:
     subtype: str | None = None
     number: str | None = None
     opening_date: date | None = None
+    # Where the account is held, when a connection covers several institutions (Finary).
+    institution: str | None = None
 
 
 @dataclass(frozen=True)

@@ -13,6 +13,8 @@ def _woob_settings(institution: Institution) -> tuple[str, dict[str, str]]:
 
 
 def fields(institution: Institution) -> list[Prompt]:
+    if institution.connector is ConnectorType.FINARY:
+        return []  # signing in happens on Finary's page, in the browser
     if institution.connector is ConnectorType.DEMO:
         return list(demo.FIELDS)
     if institution.connector is ConnectorType.WOOB:
@@ -28,6 +30,10 @@ def open_connector(
 ) -> Connector:
     if institution.connector is ConnectorType.DEMO:
         return demo.DemoConnector(params, interaction)
+    if institution.connector is ConnectorType.FINARY:
+        from kerfin_engine.connectors.finary import FinaryConnector
+
+        return FinaryConnector(params, interaction)
     if institution.connector is ConnectorType.WOOB:
         # Imported lazily: loading Woob takes a moment and isn't needed to start the app.
         from kerfin_engine.connectors.woob_connector import WoobConnector

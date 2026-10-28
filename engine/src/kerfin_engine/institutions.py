@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 
 class ConnectorType(StrEnum):
+    FINARY = "finary"
     WOOB = "woob"
     ENABLE_BANKING = "enable_banking"
     BITPANDA = "bitpanda"
@@ -115,6 +116,14 @@ CATALOG: tuple[Institution, ...] = (
 )
 
 
+FINARY = Institution(
+    "finary",
+    "Finary",
+    "Everything you have linked in Finary: banks, insurers, brokers, crypto",
+    ConnectorType.FINARY,
+    implemented=True,
+)
+
 DEMO = Institution(
     "demo", "Demo Bank", "Made-up accounts to try Kerfin", ConnectorType.DEMO, implemented=True
 )
@@ -186,13 +195,21 @@ def _woob_catalog() -> tuple[Institution, ...]:
 
 
 def catalog() -> tuple[Institution, ...]:
-    """The institutions offered to the user; the demo one only when KERFIN_DEMO=1."""
-    listed = (*CATALOG, *_woob_catalog())
-    return (*listed, DEMO) if os.environ.get("KERFIN_DEMO") == "1" else listed
+    """The institutions offered to the user; the demo one only when KERFIN_DEMO=1.
+
+    Finary collects every account: logging in to each website (Woob) proved too fragile,
+    so those institutions are no longer offered. Existing connections to them still work.
+    """
+    return (FINARY, DEMO) if os.environ.get("KERFIN_DEMO") == "1" else (FINARY,)
+
+
+def known() -> tuple[Institution, ...]:
+    """Every institution Kerfin can connect to, offered or not."""
+    return (*catalog(), *CATALOG, *_woob_catalog())
 
 
 def get(institution_id: str) -> Institution:
-    for institution in catalog():
+    for institution in known():
         if institution.id == institution_id:
             return institution
     raise KeyError(institution_id)

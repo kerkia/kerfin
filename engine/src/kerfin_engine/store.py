@@ -38,7 +38,7 @@ CREATE TABLE accounts (
     id TEXT PRIMARY KEY,
     connection_id TEXT REFERENCES connections(id) ON DELETE CASCADE,  -- NULL for manual accounts
     external_id TEXT,
-    institution_name TEXT,         -- manual accounts only
+    institution_name TEXT,         -- manual accounts, and accounts of aggregators (Finary)
     label TEXT NOT NULL,
     kind TEXT NOT NULL,
     subtype TEXT,
@@ -174,6 +174,11 @@ class Store:
             if remember and secrets:
                 db.execute("INSERT INTO secrets VALUES (?, ?)", (connection_id, json.dumps(secrets)))
 
+    def replace_secrets(self, connection_id: str, secrets: dict[str, str]) -> None:
+        """Keep renewed tokens (e.g. a rotated OAuth refresh token)."""
+        with self.transaction() as db:
+            db.execute("INSERT OR REPLACE INTO secrets VALUES (?, ?)", (connection_id, json.dumps(secrets)))
+
     def connections(self) -> list[dict[str, Any]]:
         rows = self._rows("SELECT * FROM connections ORDER BY created_at")
         for row in rows:
@@ -269,6 +274,7 @@ class Store:
             (connection_id, account.external_id),
         ).fetchone()
         values = (
+            account.institution,
             account.label,
             str(account.kind),
             account.subtype,
@@ -280,15 +286,16 @@ class Store:
         )
         if row:
             db.execute(
-                "UPDATE accounts SET label = ?, kind = ?, subtype = ?, number = ?, currency = ?, balance = ?,"
-                " opening_date = ?, updated_at = ? WHERE id = ?",
+                "UPDATE accounts SET institution_name = ?, label = ?, kind = ?, subtype = ?, number = ?,"
+                " currency = ?, balance = ?, opening_date = ?, updated_at = ? WHERE id = ?",
                 (*values, row["id"]),
             )
             return row["id"]
         account_id = new_id()
         db.execute(
-            "INSERT INTO accounts (label, kind, subtype, number, currency, balance, opening_date, updated_at,"
-            " id, connection_id, external_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO accounts (institution_name, label, kind, subtype, number, currency, balance,"
+            " opening_date, updated_at, id, connection_id, external_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (*values, account_id, connection_id, account.external_id),
         )
         return account_id

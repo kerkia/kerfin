@@ -13,6 +13,7 @@ class ErrorCode(StrEnum):
     """Stable error codes; the UI translates them, so never rely on the detail text."""
 
     INVALID_CREDENTIALS = "invalid_credentials"
+    SIGN_IN_NEEDED = "sign_in_needed"  # e.g. Finary's access expired or was revoked: sign in again
     ACTION_NEEDED = "action_needed"  # e.g. expired password or terms to accept on the website
     INTERACTION_REQUIRED = "interaction_required"  # a login challenge while running unattended
     VALIDATION_FAILED = "validation_failed"  # app/SMS validation refused or expired

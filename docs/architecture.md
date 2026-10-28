@@ -2,6 +2,13 @@
 
 ## Decisions
 
+- **Finary collects, Kerfin analyses** (decided 2026-10-28). Logging in to each bank and
+  insurer website (Woob) failed for every real institution: bot protection, changed pages,
+  refused logins. Finary maintains those connections; Kerfin reads the result through the
+  read-only connector Finary offers to AI assistants (MCP), refreshes it at each unlock,
+  keeps daily snapshots, and builds the analyses Finary doesn't offer. Finary therefore
+  holds the users' account access; Kerfin only holds a revocable read-only token.
+
 - **Audience: family and friends**, not a public service. Each user runs their own copy.
 - **Desktop app, local data.** Logins run from the user's machine (home IP, SMS codes at hand),
   so no server ever holds anyone's bank credentials. This also keeps Kerfin out of the
@@ -28,7 +35,7 @@ Desktop app (Tauri, apps/desktop)
 ├─ TS core (packages/core)       ← model and analytics, reusable on web
 ├─ Rust shell (src-tauri/)       ← window, engine process, updater
 └─ Python engine (engine/, bundled with its own Python; 127.0.0.1 + per-launch token)
-   ├─ connectors: Woob, demo; later Enable Banking, Bitpanda, Nexo, Trade Republic, on-chain
+   ├─ connectors: Finary (MCP), manual, demo; Woob kept for existing connections only
    ├─ sync jobs: "sync now", pausing for login challenges that the UI answers
    └─ vault: in-memory SQLite, saved encrypted after each change
 ```
@@ -72,6 +79,22 @@ data at rest (stolen or backed-up disk, other users), not a compromised session.
   the engine and its dependencies, and the matching Woob modules.
 
 ## Connectors
+
+### Finary
+
+`connectors/finary.py` is an MCP client (JSON-RPC over HTTP) with OAuth 2 sign-in:
+
+- **Sign-in.** Kerfin discovers Finary's authorization server from the MCP endpoint,
+  registers itself as a public client, and opens Finary's consent page in the user's
+  browser with PKCE and a random `state`. Finary redirects to the engine at
+  `/finary/callback`, the only address served without the API token (the `state` stands
+  in for it). The client id and refresh token go to the vault.
+- **Sync.** At each unlock the UI syncs the Finary connection: the refresh token buys an
+  access token (a rotated refresh token is saved), then the `accounts` and `holdings`
+  tools are called. Each sync writes a balance snapshot per account and day.
+- **Reading answers.** Finary names its tools but doesn't document their answers, so the
+  mapping looks for the usual field names. When an answer can't be read, the error and the
+  log give its structure (field names and types, never values).
 
 All connectors implement `kerfin_engine.connectors.Connector` and return the normalised
 types of `kerfin_engine.domain`. Login challenges (SMS codes, app validation, redirects)

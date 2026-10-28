@@ -83,6 +83,8 @@ export interface Institution {
   products: string;
   connector: string;
   implemented: boolean;
+  /** Can be added now; the others only serve existing connections. */
+  offered: boolean;
 }
 
 export interface Prompt {
@@ -107,6 +109,13 @@ export interface Job {
   qr_code: string | null;
   error: { code: string; detail: string } | null;
   accounts_found: number;
+}
+
+export interface FinarySignInStatus {
+  state: "idle" | "waiting" | "done" | "failed";
+  connection_id?: string;
+  job?: Job;
+  error?: { code: string; detail: string };
 }
 
 export interface EngineStatus {

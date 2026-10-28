@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { AccountDetail } from "../components/AccountDetail";
 import { AddAccount, ConnectForm } from "../components/AddAccount";
+import { FinaryConnect } from "../components/FinaryConnect";
 import { useJobs, useMinuteTick } from "../components/Jobs";
 import { Dialog } from "../components/ui";
 import { useData } from "../data";
@@ -98,7 +99,10 @@ export function Accounts() {
 
       <AddAccount open={adding} onClose={() => setAdding(false)} />
       <Dialog open={!!editing} onClose={() => setEditing(null)}>
-        {editing && editingInstitution && (
+        {editing && editing.institution === "finary" && (
+          <FinaryConnect connectionId={editing.id} onBack={() => setEditing(null)} onDone={() => setEditing(null)} />
+        )}
+        {editing && editing.institution !== "finary" && editingInstitution && (
           <ConnectForm
             institution={editingInstitution}
             connection={editing}

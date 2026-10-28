@@ -536,3 +536,12 @@ table.table {
   overflow-wrap: anywhere;
   user-select: text;
 }
+
+.finary-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}

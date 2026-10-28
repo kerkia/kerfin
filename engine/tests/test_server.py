@@ -11,7 +11,8 @@ from typing import Any
 
 import pytest
 
-from kerfin_engine import paths
+from kerfin_engine import institutions, paths
+from kerfin_engine import server as server_module
 from kerfin_engine import vault as vault_module
 from kerfin_engine.connectors import demo
 from kerfin_engine.server import App, Server
@@ -145,9 +146,48 @@ def test_qr_code_is_shown_while_the_job_runs(api: Any, monkeypatch: pytest.Monke
     assert done["accounts_found"] == 5 and done["qr_code"] is None
 
 
-def test_institutions_include_woob_modules(api: Any) -> None:
+def test_website_logins_are_no_longer_offered_but_still_known(api: Any) -> None:
     api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
-    ids = {i["id"] for i in api("GET", "/api/institutions")}
-    assert {"boursobank", "demo", "luxavie"} <= ids
+    assert [i["id"] for i in api("GET", "/api/institutions") if i["offered"]] == ["finary", "demo"]
+    known = {i.id for i in institutions.known()}
+    assert {"boursobank", "luxavie"} <= known
     if paths.woob_modules_dir().is_dir():
-        assert {"bnp", "fortuneo", "suravenir"} <= ids and "boursorama" not in ids
+        assert {"bnp", "fortuneo"} <= known
+    # Existing connections to them still open their login form.
+    assert api("GET", "/api/institutions/boursobank/fields")[0]["key"] == "login"
+
+
+def test_finary_sign_in_then_sync(api: Any, fake_finary: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    opened: list[str] = []
+    monkeypatch.setattr(server_module, "open_browser", opened.append)
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    assert [i["id"] for i in api("GET", "/api/institutions") if i["offered"]] == ["finary", "demo"]
+
+    url = api("POST", "/api/finary/sign-in", {})["url"]
+    assert api("GET", "/api/finary/sign-in")["state"] == "waiting"
+    deadline = time.monotonic() + 2
+    while not opened:
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    assert opened == [url]
+    # The user approves in the browser: Finary redirects to the engine, which finishes the sign-in.
+    with urllib.request.urlopen(url) as page:
+        assert b"connected to Finary" in page.read()
+    assert fake_finary.redirect_uris == [f"http://127.0.0.1:{api.server.server_address[1]}/finary/callback"]
+
+    status = api("GET", "/api/finary/sign-in")
+    assert status["state"] == "done"
+    assert wait_for(api, status["job"]["id"], "done", "failed")["accounts_found"] == 3
+    accounts = {a["label"]: a for a in api("GET", "/api/overview")["accounts"]}
+    assert accounts["Livret A"]["institution_name"] == "BoursoBank"
+    assert len(api("GET", f"/api/accounts/{accounts['Linxea Spirit 2']['id']}")["holdings"]) == 2
+    # The rotated refresh token was kept: the next sync works.
+    job = api("POST", f"/api/connections/{status['connection_id']}/sync")
+    assert wait_for(api, job["id"], "done", "failed")["state"] == "done"
+
+
+def test_finary_callback_needs_the_sign_in_state(api: Any) -> None:
+    port = api.server.server_address[1]
+    with pytest.raises(urllib.error.HTTPError) as error:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/finary/callback?code=x&state=forged")
+    assert error.value.code == 400

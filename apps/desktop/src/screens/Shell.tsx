@@ -2,6 +2,7 @@ import type { EngineStatus } from "@kerfin/core";
 import { useState } from "react";
 
 import { JobsProvider } from "../components/Jobs";
+import { RefreshOnStart } from "../components/RefreshOnStart";
 import { DataProvider } from "../data";
 import { engine } from "../engine";
 import { t } from "../i18n";
@@ -27,6 +28,7 @@ export function Shell({
   return (
     <DataProvider>
       <JobsProvider>
+        <RefreshOnStart />
         <div className="shell">
           <nav className="sidebar">
             <div className="brand">

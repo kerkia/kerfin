@@ -2,6 +2,7 @@
 // reads synced, end-to-end encrypted data instead of a local engine.
 import type {
   EngineStatus,
+  FinarySignInStatus,
   Holding,
   Institution,
   Job,
@@ -94,6 +95,10 @@ export const engine = {
   sync: (id: string) => call<Job>("POST", `/api/connections/${id}/sync`),
   syncAll: () => call<Job[]>("POST", "/api/sync"),
   removeConnection: (id: string) => call<object>("DELETE", `/api/connections/${id}`),
+  /** Starts signing in to Finary in the browser; `connectionId` to sign in again. */
+  finarySignIn: (connectionId?: string) =>
+    call<{ url: string }>("POST", "/api/finary/sign-in", { connection_id: connectionId }),
+  finarySignInStatus: () => call<FinarySignInStatus>("GET", "/api/finary/sign-in"),
 
   job: (id: string) => call<Job>("GET", `/api/jobs/${id}`),
   answer: (id: string, value: string) => call<Job>("POST", `/api/jobs/${id}/answer`, { value }),

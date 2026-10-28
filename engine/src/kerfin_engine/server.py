@@ -18,17 +18,19 @@ import re
 import sys
 import threading
 import time
+import webbrowser
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import metadata
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl
 
 from kerfin_engine import institutions, paths
-from kerfin_engine.connectors import registry
+from kerfin_engine.connectors import finary, registry
 from kerfin_engine.connectors.base import ConnectorError
 from kerfin_engine.domain import AccountKind
 from kerfin_engine.store import Store
@@ -60,6 +62,19 @@ def _locked() -> ApiError:
     return ApiError(HTTPStatus.LOCKED, "vault_locked")
 
 
+# Where Finary sends the browser back after the user approves access. It is the only
+# address served without the API token: the browser can't send it, so the sign-in's random
+# `state` stands in for it.
+FINARY_CALLBACK = "/finary/callback"
+open_browser = webbrowser.open  # replaced in tests
+
+
+@dataclass
+class _FinarySignIn:
+    sign_in: finary.SignIn
+    connection_id: str | None  # signing in again for an existing connection
+
+
 class App:
     """The engine's state: the vault, the unlocked store and the sync jobs."""
 
@@ -69,6 +84,55 @@ class App:
         self.sync: SyncService | None = None
         self.last_activity = time.monotonic()
         self._lock = threading.RLock()
+        self.port = 0  # set by the server; Finary's redirection comes back to it
+        self.finary_pending: _FinarySignIn | None = None
+        self.finary_status: dict[str, Any] = {"state": "idle"}
+
+    # Finary sign-in
+
+    def start_finary_sign_in(self, connection_id: str | None) -> str:
+        self.unlocked()
+        try:
+            sign_in = finary.start_sign_in(f"http://127.0.0.1:{self.port}{FINARY_CALLBACK}")
+        except ConnectorError as error:
+            raise ApiError(HTTPStatus.BAD_GATEWAY, error.code, error.detail) from error
+        self.finary_pending = _FinarySignIn(sign_in, connection_id)
+        self.finary_status = {"state": "waiting"}
+        threading.Thread(target=open_browser, args=(sign_in.url,), daemon=True).start()
+        return sign_in.url
+
+    def finish_finary_sign_in(self, query: dict[str, str]) -> tuple[bool, str]:
+        """Handles Finary's redirection; returns (success, message for the browser tab)."""
+        pending = self.finary_pending
+        if not pending or not hmac.compare_digest(
+            query.get("state", "").encode(), pending.sign_in.state.encode()
+        ):
+            return False, "This sign-in has expired. Start again from Kerfin."
+        self.finary_pending = None
+        if not query.get("code"):
+            self.finary_status = {"state": "failed", "error": {"code": "sign_in_cancelled", "detail": ""}}
+            return False, "Access wasn't granted. You can start again from Kerfin."
+        try:
+            store, sync = self.unlocked()
+            secrets = finary.finish_sign_in(pending.sign_in, query["code"])
+        except (ApiError, ConnectorError) as error:
+            log.warning("Finary sign-in failed: %s", error)
+            self.finary_status = {
+                "state": "failed",
+                "error": {"code": getattr(error, "code", ""), "detail": ""},
+            }
+            return False, "Kerfin couldn't finish signing in to Finary. Try again from Kerfin."
+        connection_id = pending.connection_id or next(
+            (c["id"] for c in store.connections() if c["institution"] == institutions.FINARY.id), None
+        )
+        if connection_id:
+            store.set_credentials(connection_id, {}, secrets, remember=True)
+        else:
+            connection_id = store.add_connection(institutions.FINARY.id, "Finary", {}, secrets, remember=True)
+        self.persist()
+        job = sync.start(connection_id)
+        self.finary_status = {"state": "done", "connection_id": connection_id, "job": job.to_json()}
+        return True, "Kerfin is connected to Finary. You can close this tab and go back to Kerfin."
 
     # Vault
 
@@ -226,6 +290,8 @@ def lock_vault(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
 
 @route("GET", "/api/institutions")
 def list_institutions(_: App, __: re.Match[str], ___: dict[str, Any]) -> Any:
+    """Every known institution, so existing connections keep their names; `offered` ones can be added."""
+    offered = {i.id for i in institutions.catalog()}
     return [
         {
             "id": i.id,
@@ -233,14 +299,30 @@ def list_institutions(_: App, __: re.Match[str], ___: dict[str, Any]) -> Any:
             "products": i.products,
             "connector": i.connector,
             "implemented": i.implemented,
+            "offered": i.id in offered,
         }
-        for i in institutions.catalog()
+        for i in institutions.known()
     ]
 
 
 @route("GET", "/api/institutions/(?P<id>[\\w-]+)/fields")
 def institution_fields(_: App, match: re.Match[str], __: dict[str, Any]) -> Any:
     return [asdict(prompt) for prompt in _fields(_institution(match["id"]))]
+
+
+@route("POST", "/api/finary/sign-in")
+def finary_sign_in(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
+    store, _sync = app.unlocked()
+    connection_id = _str(body, "connection_id", required=False) or None
+    if connection_id:
+        _connection(store, connection_id)
+    return {"url": app.start_finary_sign_in(connection_id)}
+
+
+@route("GET", "/api/finary/sign-in")
+def finary_sign_in_status(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
+    app.unlocked()
+    return app.finary_status
 
 
 @route("GET", "/api/overview")
@@ -429,9 +511,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._handle("DELETE")
 
     def _handle(self, method: str) -> None:
+        path, _, query = self.path.partition("?")
+        if method == "GET" and path == FINARY_CALLBACK:
+            self._finary_callback(query)
+            return
         try:
             self._check_request()
-            path = self.path.split("?", 1)[0]
             handler, match = _find_route(method, path)
             if path != "/api/status":  # status is polled; it isn't user activity
                 self.server.app.last_activity = time.monotonic()
@@ -444,9 +529,33 @@ class RequestHandler(BaseHTTPRequestHandler):
             detail = f"{type(error).__name__}: {error}"
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": {"code": "unexpected", "detail": detail}})
 
-    def _check_request(self) -> None:
+    def _finary_callback(self, query: str) -> None:
+        if not self._good_host():
+            self._send(HTTPStatus.FORBIDDEN, {"error": {"code": "bad_host", "detail": ""}})
+            return
+        try:
+            ok, message = self.server.app.finish_finary_sign_in(dict(parse_qsl(query)))
+        except Exception:
+            log.exception("Finary sign-in failed")
+            ok, message = False, "Kerfin couldn't finish signing in to Finary. Try again from Kerfin."
+        page = (
+            "<!doctype html><meta charset=utf-8><title>Kerfin</title>"
+            "<body style='font:16px system-ui;max-width:32em;margin:15vh auto;padding:0 16px'>"
+            f"<h1>{'Done' if ok else 'Not connected'}</h1><p>{message}</p>"
+        ).encode()
+        self.send_response(HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(page)))
+        self.end_headers()
+        self.wfile.write(page)
+
+    def _good_host(self) -> bool:
         port = self.server.server_address[1]
-        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+        return self.headers.get("Host") in (f"127.0.0.1:{port}", f"localhost:{port}")
+
+    def _check_request(self) -> None:
+        if not self._good_host():
             raise ApiError(HTTPStatus.FORBIDDEN, "bad_host")
         supplied = self.headers.get("Authorization", "").removeprefix("Bearer ")
         if not hmac.compare_digest(supplied.encode(), self.server.token.encode()):
@@ -489,6 +598,7 @@ class Server(ThreadingHTTPServer):
             raise ValueError("The API token is too short")
         super().__init__(("127.0.0.1", port), RequestHandler)
         self.app = app
+        app.port = self.server_address[1]
         self.token = token
         self.allowed_origins = TAURI_ORIGINS | (extra_origins or set())
 
