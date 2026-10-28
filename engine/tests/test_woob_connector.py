@@ -16,6 +16,7 @@ from woob.capabilities.base import NotAvailable
 from woob.exceptions import (
     AuthMethodNotImplemented,
     BrowserIncorrectPassword,
+    BrowserPasswordExpired,
     BrowserQuestion,
     DecoupledValidation,
     ScrapingBlocked,
@@ -32,6 +33,7 @@ from kerfin_engine.connectors.woob_connector import (
     holding_from_woob,
     prompt_from_value,
     transaction_from_woob,
+    translate_error,
     where,
 )
 from kerfin_engine.domain import AccountKind
@@ -334,3 +336,39 @@ def test_where_shows_the_page_but_not_its_tokens() -> None:
         "302 at api.example.com/oauth/authorization-code [session_id], page 'Mon espace', "
         "redirected to bank.example.com/mon-espace [session_id, error=locked]"
     )
+
+
+class FakeFortuneoBrowser:
+    def __init__(self, location: str) -> None:
+        self.response = SimpleNamespace(headers={"Location": location})
+
+    def request_authorization(self) -> None:
+        raise KeyError("code")  # what Woob's module does without a code in the redirection
+
+
+def test_fortuneo_refused_login_is_a_wrong_password() -> None:
+    backend = SimpleNamespace(BROWSER=FakeFortuneoBrowser)
+    woob_fixes.apply("fortuneo", backend, None)  # type: ignore[arg-type]
+    refused = (
+        "https://mabanque.fortuneo.fr/mon-espace#error=access_denied&error_description=authentication-failed"
+    )
+
+    with pytest.raises(BrowserIncorrectPassword):
+        backend.BROWSER(refused).request_authorization()
+    with pytest.raises(KeyError):
+        backend.BROWSER("https://mabanque.fortuneo.fr/mon-espace#other=1").request_authorization()
+
+
+@pytest.mark.skipif(not paths.woob_modules_dir().is_dir(), reason="Woob modules not installed")
+def test_spirica_password_change_page_needs_action() -> None:
+    browser = WoobConnector("spirica", {"login": "user", "password": "secret"})._backend.browser
+    url = "https://www.sylvea.fr/securite/securite/changePasswd.xhtml?cid=3"
+    assert browser.password_change.match(url)
+    response = requests.Response()
+    response._content = b"<html></html>"
+    response.url = url
+    response.encoding = "utf-8"
+
+    with pytest.raises(BrowserPasswordExpired) as error:
+        browser.password_change.klass(browser, response).on_load()
+    assert translate_error(error.value).code is ErrorCode.ACTION_NEEDED

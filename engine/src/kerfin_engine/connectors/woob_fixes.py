@@ -6,8 +6,11 @@ Drop a fix once Woob handles the case itself.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import parse_qsl, urlsplit
 
 from woob.browser import URL
+from woob.browser.pages import HTMLPage
+from woob.exceptions import BrowserIncorrectPassword, BrowserPasswordExpired
 from woob.tools.backend import Module
 
 from kerfin_engine.connectors.base import InteractionHandler
@@ -24,10 +27,37 @@ def apply(module: str, backend: Module, interaction: InteractionHandler | None) 
         backend.BROWSER = _boursobank_browser(backend.BROWSER, interaction)
     elif module == "spirica":
         backend.BROWSER = _spirica_browser(backend.BROWSER)
+    elif module == "fortuneo":
+        backend.BROWSER = _fortuneo_browser(backend.BROWSER)
+
+
+def _fortuneo_browser(base: type[Any]) -> type[Any]:
+    """Fortuneo refuses a login by redirecting with an error, where Woob expects a code."""
+
+    class FortuneoBrowser(base):  # type: ignore[misc, valid-type]
+        def request_authorization(self) -> None:
+            try:
+                super().request_authorization()
+            except KeyError:
+                location = self.response.headers.get("Location", "")
+                params = dict(parse_qsl(urlsplit(location).fragment))
+                if params.get("error_description") == "authentication-failed":
+                    raise BrowserIncorrectPassword(params["error_description"]) from None
+                raise
+
+    return FortuneoBrowser
+
+
+class _PasswordChangePage(HTMLPage):
+    def on_load(self) -> None:
+        raise BrowserPasswordExpired(
+            locale="fr-FR", message="Le site demande de changer le mot de passe : connectez-vous sur le site."
+        )
 
 
 def _spirica_browser(base: type[Any]) -> type[Any]:
-    """Sylvéa (Spirica) renamed its login button, which the website needs in the form data."""
+    """Sylvéa (Spirica) renamed its login button, which the website needs in the form data, and
+    may ask for a new password after logging in, a page Woob doesn't know."""
 
     class LoginPage(base.login.klass):  # type: ignore[misc, name-defined]
         def login(self, login: str, password: str) -> None:
@@ -40,6 +70,7 @@ def _spirica_browser(base: type[Any]) -> type[Any]:
 
     class SpiricaBrowser(base):  # type: ignore[misc, valid-type]
         login = URL(*base.login.urls, LoginPage)
+        password_change = URL(r"/securite/.*changePasswd\.xhtml.*", _PasswordChangePage)
 
     return SpiricaBrowser
 
