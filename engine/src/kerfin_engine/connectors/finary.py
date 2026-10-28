@@ -511,12 +511,22 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
         matches.append("linked" if security else None)
     unpaired: list[Mapping[str, Any]] = []
     if records and included and not any(securities):
-        candidates = list(included.values())
-        certain = len(candidates) == len(records)
-        for i in range(len(records)):
-            securities[i] = candidates[i] if i < len(candidates) else {}
+        # Finary sends its lines sorted by their security's ISIN, but the securities in no
+        # fixed order (it changed between two syncs): sorting the securities by ISIN lines
+        # them up (checked against Finary's own view of an account, 2026-10-28).
+        # Resources without an ISIN (currencies) keep their place after them.
+        candidates = sorted(
+            included.values(),
+            key=lambda resource: (resource.get("isin") is None, str(resource.get("isin") or "")),
+        )
+        # Lines with a name of their own (a euro fund, cash) describe themselves: they are
+        # not among the securities (seen on a real account, 2026-10-28).
+        pairable = [i for i, item in enumerate(records) if not _name(_pick(item, _LABEL_KEYS))]
+        certain = len(candidates) == len(pairable)
+        for n, i in enumerate(pairable):
+            securities[i] = candidates[n] if n < len(candidates) else {}
             matches[i] = "order" if certain else "order_uncertain"
-        unpaired = candidates[len(records) :]
+        unpaired = candidates[len(pairable) :]
     for item, security, match in zip(records, securities, matches, strict=True):
         valuation, currency = _amount(
             _pick(item, ("current_value", "valuation", "value", "amount", "balance"))
@@ -569,6 +579,43 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
             )
         )
     return by_account
+
+
+def _ranks(values: list[Any]) -> list[int | None]:
+    """Each value's rank (1 = smallest), or None when missing: the order, not the values."""
+    present = sorted(
+        {v for v in values if v not in (None, "")}, key=lambda v: (not str(v).isdigit(), _sortable(v))
+    )
+    return [present.index(v) + 1 if v not in (None, "") else None for v in values]
+
+
+def _sortable(value: Any) -> Any:
+    text = str(value)
+    return int(text) if text.isdigit() else text
+
+
+def order_keys(payload: Any) -> dict[str, list[Any]]:
+    """How Finary's lines and securities would sort by each key they carry, as ranks in the
+    answer's order: to find which sorting pairs them (no ids, dates or values)."""
+    data = (
+        [item for item in (payload.get("data") or []) if isinstance(item, Mapping)]
+        if isinstance(payload, Mapping)
+        else []
+    )
+    lines = [_flat(item) for item in data]
+    securities = list(_included(payload).items())
+    return {
+        "line_named": [bool(_name(_pick(line, _LABEL_KEYS))) for line in lines],
+        "line_id": _ranks([item.get("id") for item in data]),
+        "line_asset_id": _ranks([(line.get("asset_ref") or ("", None))[1] for line in lines]),
+        "line_created_at": _ranks([line.get("created_at") for line in lines]),
+        "line_updated_at": _ranks([line.get("updated_at") for line in lines]),
+        "security_type": [kind for (kind, _), _ in securities],
+        "security_id": _ranks([resource_id for (_, resource_id), _ in securities]),
+        "security_isin": _ranks([resource.get("isin") for _, resource in securities]),
+        "security_name": _ranks([resource.get("name") for _, resource in securities]),
+        "security_symbol": _ranks([resource.get("symbol") for _, resource in securities]),
+    }
 
 
 def _id_format(value: str) -> str:
@@ -721,13 +768,14 @@ class FinaryConnector:
                 self._holdings = {}
             found = [holding for holdings in holdings_from(payload).values() for holding in holdings]
             _log_links(payload, found)
-            if any(h.match == "order_uncertain" for h in found):
-                # The account's name only (no amounts), so the user knows which one to check.
+            if any(h.match in ("order", "order_uncertain") for h in found):
+                # The account's name and how each list sorts (ranks, never ids, dates or
+                # amounts), to find the order that pairs lines with their securities.
                 log.info(
-                    "Finary holdings of %r paired by order, uncertain: %s values, %s securities",
+                    "Finary holdings of %r paired by order (%s): %s",
                     self._labels.get(account_id, account_id),
-                    sum(h.match != "unpaired" for h in found),
-                    len(_included(payload)),
+                    "uncertain" if any(h.match == "order_uncertain" for h in found) else "same counts",
+                    json.dumps(order_keys(payload)),
                 )
             return found
         log.info("Finary holdings needs %s: not read yet", required)

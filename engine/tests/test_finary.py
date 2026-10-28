@@ -336,3 +336,57 @@ def test_differing_counts_mark_the_pairing_uncertain() -> None:
         ("FR0000000001", Decimal("100"), "order_uncertain"),
         ("FR0000000002", None, "unpaired"),
     ]
+
+
+def test_lines_with_their_own_name_are_not_paired_with_a_security() -> None:
+    payload = _unlinked(["10", "20", "30"], [("FR0000000020", "Fund B"), ("FR0000000010", "Fund A")])
+    payload["data"][0]["attributes"]["name"] = "Euro fund"
+    holdings = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    # The securities go in ISIN order: FR0000000010 before FR0000000020.
+    assert [(h.label, h.isin, h.match) for h in holdings] == [
+        ("Euro fund", None, None),
+        ("Fund A", "FR0000000010", "order"),
+        ("Fund B", "FR0000000020", "order"),
+    ]
+
+
+def test_order_keys_give_ranks_only() -> None:
+    payload = _unlinked(["1", "2"], [("FR0000000002", "B"), ("FR0000000001", "A")])
+    payload["data"][0]["attributes"]["created_at"] = "2026-05-02T10:00:00Z"
+    payload["data"][1]["attributes"]["created_at"] = "2026-01-01T10:00:00Z"
+    keys = finary.order_keys(payload)
+    assert keys["line_created_at"] == [2, 1]
+    assert keys["security_isin"] == [2, 1] and keys["security_id"] == [1, 2]
+    assert "FR0000000001" not in json.dumps(keys) and "2026" not in json.dumps(keys)
+
+
+def test_securities_are_paired_with_lines_in_isin_order() -> None:
+    """The layout seen on a real account (2026-10-28), with made-up funds and amounts: a named
+    euro-fund line first, the other lines in ISIN order, the securities in a scrambled order
+    (including ISINs where "0" sorts before letters)."""
+    values = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+    sent = [
+        ("LU0000000300", "Fund G"),
+        ("IE00ZZ000000", "Fund D"),
+        ("LU0000000200", "Fund F"),
+        ("FR0000000100", "Fund A"),
+        ("FR0000000200", "Fund B"),
+        ("LU0000000400", "Fund H"),
+        ("IE000AB00000", "Fund C"),
+        ("LU0000000100", "Fund E"),
+    ]
+    payload = _unlinked(values, sent)
+    payload["data"][0]["attributes"]["name"] = "Euro fund"
+    holdings = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    assert {str(h.valuation): h.label for h in holdings} == {
+        "1": "Euro fund",
+        "2": "Fund A",
+        "3": "Fund B",
+        "4": "Fund C",
+        "5": "Fund D",
+        "6": "Fund E",
+        "7": "Fund F",
+        "8": "Fund G",
+        "9": "Fund H",
+    }
+    assert {h.match for h in holdings} == {None, "order"}
