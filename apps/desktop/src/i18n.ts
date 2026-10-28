@@ -130,6 +130,7 @@ const en = {
   "settings.updatesDev": "Updates are only available in the installed app.",
 
   "update.available": "Kerfin {version} is ready.",
+  "settings.updateReady": "Kerfin {version} is ready: restart from the bar at the top of the window.",
   "update.install": "Restart to update",
   "update.installing": "Updating Kerfin…",
   "update.failed": "The update failed: {error}",

@@ -13,6 +13,24 @@ import { Settings } from "./Settings";
 
 type Page = "overview" | "accounts" | "settings";
 
+/** Pinned above every page while an update waits for a restart (or is being installed). */
+function UpdateBar({ updater }: { updater: ReturnType<typeof useUpdater> }) {
+  const { state } = updater;
+  if (state.kind !== "available" && state.kind !== "installing") return null;
+  return (
+    <div className="update-bar" role="status">
+      <span>
+        {state.kind === "available" ? t("update.available", { version: state.version }) : t("update.installing")}
+      </span>
+      {state.kind === "available" && (
+        <button className="btn small primary" onClick={() => void updater.installNow()}>
+          {t("update.install")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Shell({
   status,
   onStatus,
@@ -52,15 +70,8 @@ export function Shell({
             </div>
           </nav>
           <main className="main">
+            <UpdateBar updater={updater} />
             <div className="page">
-              {updater.state.kind === "available" && (
-                <div className="banner">
-                  <span>{t("update.available", { version: updater.state.version })}</span>
-                  <button className="btn small" onClick={() => void updater.installNow()}>
-                    {t("update.install")}
-                  </button>
-                </div>
-              )}
               {page === "overview" && <OverviewPage onNavigate={setPage} />}
               {page === "accounts" && <Accounts />}
               {page === "settings" && <Settings status={status} onStatus={onStatus} updater={updater} />}
