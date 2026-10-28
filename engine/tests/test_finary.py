@@ -67,6 +67,8 @@ def test_accounts_are_read_from_other_layouts() -> None:
         ("Compte courant", AccountKind.CHECKING),
         ("Compte-titres ordinaire (CTO)", AccountKind.SECURITIES),
         ("SCPI", AccountKind.REAL_ESTATE),
+        ("Lucya Cardif PER", AccountKind.RETIREMENT),
+        ("Carte Visa Premier", AccountKind.CARD),
         ("Crédit immobilier", AccountKind.LOAN),
         ("something else", AccountKind.OTHER),
     ],
@@ -169,3 +171,40 @@ def test_investment_accounts_get_their_kind_from_name_or_institution(
     }
     [account] = finary.accounts_from(payload)
     assert account.kind is kind and account.institution == "X"
+
+
+def test_holdings_take_isin_and_price_from_the_linked_security() -> None:
+    # Shaped like Finary's holdings answer (2026-10-28); the values are made up.
+    payload = {
+        "data": [
+            {
+                "id": "h1",
+                "type": "holdings",
+                "attributes": {
+                    "name": "MSCI World",
+                    "current_value": "1520.40",
+                    "current_value_currency": "EUR",
+                },
+                "relationships": {"asset": {"data": {"type": "securities", "id": "s1"}}},
+            }
+        ],
+        "included": [
+            {
+                "id": "s1",
+                "type": "securities",
+                "attributes": {
+                    "isin": "IE00B4L5Y983",
+                    "name": "iShares Core MSCI World",
+                    "current_price": "98.12",
+                },
+            }
+        ],
+        "meta": {"total": 1, "limit": 100, "offset": 0, "has_more": False},
+    }
+    [holding] = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    assert (holding.label, holding.isin, holding.valuation, holding.unit_value) == (
+        "MSCI World",
+        "IE00B4L5Y983",
+        Decimal("1520.40"),
+        Decimal("98.12"),
+    )

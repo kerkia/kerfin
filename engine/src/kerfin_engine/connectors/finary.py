@@ -389,7 +389,8 @@ def _records(payload: Any, required: Iterable[str]) -> list[Mapping[str, Any]]:
 
 _KINDS: tuple[tuple[str, AccountKind], ...] = (
     (r"loan|cr[eé]dit|mortgage|pr[eê]t|emprunt", AccountKind.LOAN),
-    (r"card|carte", AccountKind.CARD),
+    # Whole words only: "Lucya Cardif PER" is no card.
+    (r"\bcard\b|\bcarte\b", AccountKind.CARD),
     (r"\bpea\b|pea[_ -]?pme", AccountKind.PEA),
     (r"\bper\b|perco|perp|madelin|retire|pension|retraite", AccountKind.RETIREMENT),
     (r"life|assurance|insur|capitali", AccountKind.LIFE_INSURANCE),
@@ -469,6 +470,7 @@ def accounts_from(payload: Any) -> list[Account]:
 def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
     """Holdings by Finary account id (None when the answer doesn't say)."""
     by_account: dict[str | None, list[Holding]] = {}
+    included = _included(payload)
     for item in _records(payload, ("quantity", "isin", "valuation", "current_value", "value")):
         valuation, currency = _amount(
             _pick(item, ("current_value", "valuation", "value", "amount", "balance"))
@@ -477,10 +479,13 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
         if isinstance(account, Mapping):
             account = _pick(account, _ID_KEYS)
         isin = _pick(item, ("isin", "isin_code"))
-        security = item.get("security") if isinstance(item.get("security"), Mapping) else {}
+        # The security itself: nested, or linked in `included` (Finary's "asset").
+        security = item.get("security") if isinstance(item.get("security"), Mapping) else None
+        security = security or included.get(item.get("asset_ref") or item.get("security_ref"), {})  # type: ignore[arg-type]
         isin = isin or _pick(security, ("isin", "isin_code"))
         quantity, _ = _amount(_pick(item, ("quantity", "shares", "units")))
-        unit_value, _ = _amount(_pick(item, ("unit_value", "price", "current_price", "last_price")))
+        price_keys = ("unit_value", "price", "current_price", "last_price")
+        unit_value, _ = _amount(_pick(item, price_keys) or _pick(security, price_keys))
         unit_price, _ = _amount(
             _pick(item, ("unit_price", "buying_price", "average_price", "cost_basis_per_unit"))
         )
@@ -580,14 +585,29 @@ class FinaryConnector:
             return self._holdings.get(account_id, [])
         if len(required) == 1 and "account" in required[0]:
             # One account at a time: its holdings may not repeat the account's id.
-            payload = self._mcp.call("holdings", {required[0]: account_id})
+            payload = self._all_pages("holdings", {required[0]: account_id})
             if self._holdings is None:
                 log.info("Finary holdings answer: %s", json.dumps(shape(payload)))
                 self._holdings = {}
             found = holdings_from(payload)
-            return found.get(account_id) or found.get(None) or [h for hs in found.values() for h in hs]
+            return [holding for holdings in found.values() for holding in holdings]
         log.info("Finary holdings needs %s: not read yet", required)
         return []
+
+    def _all_pages(self, tool: str, arguments: dict[str, Any], page_size: int = 100) -> Any:
+        """A paginated tool's answer, with `data` and `included` gathered across pages."""
+        data: list[Any] = []
+        included: list[Any] = []
+        payload: Any = {}
+        for page in range(20):
+            payload = self._mcp.call(tool, {**arguments, "limit": page_size, "offset": page * page_size})
+            if not isinstance(payload, Mapping) or not isinstance(payload.get("data"), list):
+                return payload
+            data += payload["data"]
+            included += payload.get("included") or []
+            if not (payload.get("meta") or {}).get("has_more"):
+                break
+        return {**payload, "data": data, "included": included}
 
     def transactions(self, account_id: str, limit: int | None = None) -> list[Transaction]:
         return []  # balances and holdings first; transactions need Finary's Budget feature
