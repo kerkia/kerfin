@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "What the main window's UI may call",
   "windows": ["main"],
-  "permissions": ["core:default", "updater:default", "process:allow-restart"]
+  "permissions": ["core:default", "core:window:allow-set-focus", "updater:default", "process:allow-restart"]
 }

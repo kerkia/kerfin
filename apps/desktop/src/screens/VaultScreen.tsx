@@ -1,10 +1,33 @@
 import type { EngineStatus } from "@kerfin/core";
-import { useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
 
 import { EngineError, engine } from "../engine";
 import { errorText, t } from "../i18n";
 
 const MIN_LENGTH = 10; // kerfin_engine.vault.MIN_PASSPHRASE_LENGTH
+
+/**
+ * Puts the cursor in the passphrase field. At launch the window itself doesn't have the
+ * keyboard yet (WebView2 waits for a click), so the desktop app asks for it first; the
+ * field takes the focus back whenever the window gets it.
+ */
+function useStartFocus(input: React.RefObject<HTMLInputElement | null>) {
+  useEffect(() => {
+    const focus = () => {
+      if (document.activeElement === document.body || document.activeElement === null) input.current?.focus();
+    };
+    if (isTauri()) {
+      void import("@tauri-apps/api/window")
+        .then(({ getCurrentWindow }) => getCurrentWindow().setFocus())
+        .catch(() => undefined)
+        .finally(() => input.current?.focus());
+    }
+    input.current?.focus();
+    window.addEventListener("focus", focus);
+    return () => window.removeEventListener("focus", focus);
+  }, [input]);
+}
 
 export function VaultScreen({
   mode,
@@ -15,6 +38,8 @@ export function VaultScreen({
 }) {
   const creating = mode === "missing";
   const [passphrase, setPassphrase] = useState("");
+  const passphraseInput = useRef<HTMLInputElement>(null);
+  useStartFocus(passphraseInput);
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -52,6 +77,7 @@ export function VaultScreen({
           <label htmlFor="passphrase">{t("vault.passphrase")}</label>
           <input
             id="passphrase"
+            ref={passphraseInput}
             className="input"
             type="password"
             autoFocus

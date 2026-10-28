@@ -13,6 +13,7 @@
   --accent: #2a78d6;
   --accent-ink: #ffffff;
   --accent-wash: rgba(42, 120, 214, 0.1);
+  --focus-ring: rgba(42, 120, 214, 0.35);
   --good: #006300;
   --critical: #d03b3b;
   /* Categorical series, in fixed order (validated for color vision deficiencies). */
@@ -49,6 +50,7 @@
     --border: rgba(255, 255, 255, 0.1);
     --accent: #3987e5;
     --accent-wash: rgba(57, 135, 229, 0.12);
+    --focus-ring: rgba(57, 135, 229, 0.5);
     --good: #0ca30c;
     --critical: #e66767;
     --series-1: #3987e5;
@@ -268,7 +270,12 @@ select {
   padding: 8px 10px;
   width: 100%;
 }
-.input:focus,
+/* A focused field shows it clearly: accent border and a soft ring around it. */
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
 .btn:focus-visible,
 .nav-item:focus-visible {
   outline: 2px solid var(--accent);
