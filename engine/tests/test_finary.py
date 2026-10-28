@@ -11,23 +11,52 @@ from kerfin_engine.connectors.base import ConnectorError, ErrorCode
 from kerfin_engine.domain import AccountKind
 
 
-def test_accounts_are_read_from_varied_layouts() -> None:
+def test_finary_accounts_are_read_with_owned_value_and_institution() -> None:
     accounts = {a.external_id: a for a in finary.accounts_from(FINARY_ACCOUNTS)}
 
     livret, spirit, crypto = accounts["acc-1"], accounts["acc-2"], accounts["acc-3"]
-    assert (livret.kind, livret.balance, livret.currency, livret.institution) == (
+    assert (livret.label, livret.kind, livret.balance, livret.currency, livret.institution) == (
+        "Livret A",
         AccountKind.SAVINGS,
-        Decimal("22950.5"),
+        Decimal("11475.25"),
         "EUR",
         "BoursoBank",
     )
-    assert (spirit.kind, spirit.balance, spirit.currency, spirit.institution) == (
+    assert (spirit.kind, spirit.institution, spirit.subtype) == (
         AccountKind.LIFE_INSURANCE,
-        Decimal("48210.37"),
-        "EUR",
         "Spirica",
+        "life_insurance",
     )
-    assert crypto.kind is AccountKind.CRYPTO and crypto.balance == Decimal("1200")
+    assert crypto.kind is AccountKind.CRYPTO and crypto.institution is None
+
+
+def test_accounts_are_read_from_other_layouts() -> None:
+    payload = {
+        "accounts": [
+            {
+                "id": "1",
+                "name": "PEA",
+                "category": "pea",
+                "bank": {"name": "Bourse Direct"},
+                "balance": {"value": 9.5},
+            },
+            {
+                "id": "2",
+                "label": "CTO",
+                "type": "securities",
+                "current_value": "12",
+                "currency": {"code": "usd"},
+            },
+        ]
+    }
+    pea, cto = finary.accounts_from(payload)
+    assert (pea.kind, pea.balance, pea.currency, pea.institution) == (
+        AccountKind.PEA,
+        Decimal("9.5"),
+        "EUR",
+        "Bourse Direct",
+    )
+    assert (cto.kind, cto.balance, cto.currency) == (AccountKind.SECURITIES, Decimal("12"), "USD")
 
 
 @pytest.mark.parametrize(
@@ -44,6 +73,11 @@ def test_accounts_are_read_from_varied_layouts() -> None:
 )
 def test_account_kinds(description: str, kind: AccountKind) -> None:
     assert finary.account_kind(description) is kind
+
+
+def test_shape_shows_each_resource_type() -> None:
+    included = finary.shape(FINARY_ACCOUNTS)["included"]
+    assert included[0] == "4 items" and len(included) == 3  # institution_connection, institution
 
 
 def test_shape_hides_values_and_data_like_keys() -> None:
@@ -67,7 +101,8 @@ def test_connector_reads_accounts_and_holdings(fake_finary: FakeFinary) -> None:
     assert [h.label for h in holdings] == ["Fonds euros", "MSCI World"]
     assert holdings[1].isin == "IE00B4L5Y983" and holdings[1].quantity == Decimal("41.2")
     assert connector.holdings("acc-1") == []
-    assert fake_finary.calls == [
+    assert connector.accounts()[1].institution == "Spirica"
+    assert fake_finary.calls[:5] == [
         "initialize",
         "notifications/initialized",
         "tools/list",
@@ -90,7 +125,7 @@ def test_expired_refresh_token_asks_to_sign_in_again(fake_finary: FakeFinary) ->
 def test_unknown_layout_reports_its_structure(
     fake_finary: FakeFinary, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("conftest.FINARY_ACCOUNTS", {"total": 99.5})
+    monkeypatch.setattr("conftest.FINARY_ACCOUNTS", {"summary": {"net": 99.5}})
     secrets = {
         "client_id": "client-1",
         "refresh_token": "r1",
@@ -99,4 +134,4 @@ def test_unknown_layout_reports_its_structure(
     with pytest.raises(ConnectorError) as error:
         finary.FinaryConnector(secrets).accounts()
     assert error.value.code is ErrorCode.UNEXPECTED
-    assert '{"total": "float"}' in error.value.detail and "99.5" not in error.value.detail
+    assert '{"summary": {"net": "float"}}' in error.value.detail and "99.5" not in error.value.detail

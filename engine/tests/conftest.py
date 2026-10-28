@@ -13,25 +13,54 @@ import pytest
 
 from kerfin_engine.connectors import finary
 
+
+def _account(account_id: str, name: str, account_type: str, owned_eur: str, connection: str | None) -> dict:
+    """An account as Finary's `accounts` tool returns it (JSON:API)."""
+    return {
+        "id": account_id,
+        "type": "account",
+        "attributes": {
+            "name": name,
+            "account_type": account_type,
+            "currency": "EUR",
+            "balance": str(float(owned_eur) * 2),  # a joint account: the user owns half
+            "total_owned_value_eur": owned_eur,
+            "full_value_eur": str(float(owned_eur) * 2),
+            "owners": [{"id": "p1", "type": "profile", "name": "Me", "ownership_share": "0.5"}],
+            "total_owned_share": "0.5",
+        },
+        "relationships": {
+            "institution_connection": {
+                "data": {"type": "institution_connection", "id": connection} if connection else None
+            }
+        },
+    }
+
+
+# Shaped like the answer Finary actually gave (2026-10-28); the values are made up.
 FINARY_ACCOUNTS = {
-    "accounts": [
+    "_reading_note": "Amounts are strings in the account currency.",
+    "data": [
+        _account("acc-1", "Livret A", "savings", "11475.25", "conn-1"),
+        _account("acc-2", "Linxea Spirit 2", "life_insurance", "24105.18", "conn-2"),
+        _account("acc-3", "Bitpanda", "crypto", "600", None),
+    ],
+    "included": [
         {
-            "id": "acc-1",
-            "name": "Livret A",
-            "type": "savings",
-            "institution": {"name": "BoursoBank"},
-            "balance": {"value": 22950.5, "currency": "EUR"},
+            "id": "conn-1",
+            "type": "institution_connection",
+            "attributes": {"sync_status": "synced"},
+            "relationships": {"institution": {"data": {"type": "institution", "id": "inst-1"}}},
         },
         {
-            "id": "acc-2",
-            "name": "Linxea Spirit 2",
-            "category": "life_insurance",
-            "institution_name": "Spirica",
-            "current_value": "48210.37",
-            "currency": {"code": "eur"},
+            "id": "conn-2",
+            "type": "institution_connection",
+            "attributes": {"sync_status": "synced"},
+            "relationships": {"institution": {"data": {"type": "institution", "id": "inst-2"}}},
         },
-        {"id": "acc-3", "name": "Bitpanda", "type": "crypto", "balance": 1200, "currency": "EUR"},
-    ]
+        {"id": "inst-1", "type": "institution", "attributes": {"name": "BoursoBank"}},
+        {"id": "inst-2", "type": "institution", "attributes": {"name": "Spirica"}},
+    ],
 }
 
 FINARY_HOLDINGS = {

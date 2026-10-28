@@ -276,8 +276,40 @@ def shape(value: Any, depth: int = 0) -> Any:
             return f"<object with {len(keys)} keys>"
         return {key: shape(value[key], depth + 1) for key in keys}
     if isinstance(value, list):
-        return [f"{len(value)} items", shape(value[0], depth + 1)] if value else []
+        if not value:
+            return []
+        # One sample per resource type: JSON:API lists mix types (e.g. "included").
+        samples: dict[str, Any] = {}
+        for item in value:
+            kind = item.get("type") if isinstance(item, Mapping) else None
+            kind = kind if isinstance(kind, str) and re.fullmatch(r"[a-z_]{1,40}", kind) else ""
+            samples.setdefault(kind, item)
+        return [f"{len(value)} items", *(shape(item, depth + 1) for item in list(samples.values())[:5])]
     return type(value).__name__
+
+
+def _flat(item: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A JSON:API resource as one flat object: its `attributes`, its id and type as
+    `resource_type`, and each relationship as `<name>_id`."""
+    attributes = item.get("attributes")
+    if not isinstance(attributes, Mapping):
+        return item
+    flat = {**attributes, "id": item.get("id"), "resource_type": item.get("type")}
+    for name, relationship in (item.get("relationships") or {}).items():
+        data = relationship.get("data") if isinstance(relationship, Mapping) else None
+        if isinstance(data, Mapping):
+            flat[f"{name}_id"] = data.get("id")
+    return flat
+
+
+def _included(payload: Any) -> dict[tuple[str, str], Mapping[str, Any]]:
+    """JSON:API side resources (institutions, connections...) by (type, id), flattened."""
+    items = payload.get("included") if isinstance(payload, Mapping) else None
+    return {
+        (str(item.get("type")), str(item.get("id"))): _flat(item)
+        for item in items or []
+        if isinstance(item, Mapping)
+    }
 
 
 _ID_KEYS = ("id", "account_id", "uuid", "slug")
@@ -340,7 +372,7 @@ def _records(payload: Any, required: Iterable[str]) -> list[Mapping[str, Any]]:
         if depth > 6:
             return
         if isinstance(value, list):
-            items = [item for item in value if isinstance(item, Mapping)]
+            items = [_flat(item) for item in value if isinstance(item, Mapping)]
             if items and any(_pick(item, required) is not None for item in items) and len(items) > len(best):
                 best = items
             for item in items:
@@ -377,10 +409,29 @@ def account_kind(*descriptions: str | None) -> AccountKind:
     return AccountKind.OTHER
 
 
+def _institution(item: Mapping[str, Any], included: dict[tuple[str, str], Mapping[str, Any]]) -> str | None:
+    """The account's institution: a field of its own, or through Finary's JSON:API links
+    (account -> institution_connection -> institution)."""
+    named = _name(_pick(item, _INSTITUTION_KEYS))
+    if named:
+        return named
+    connection = included.get(("institution_connection", str(item.get("institution_connection_id"))), {})
+    institution_id = connection.get("institution_id") or item.get("institution_id")
+    institution = included.get(("institution", str(institution_id)), {})
+    return _name(_pick(institution, _LABEL_KEYS)) or _name(_pick(connection, _LABEL_KEYS))
+
+
 def accounts_from(payload: Any) -> list[Account]:
+    included = _included(payload)
     found = []
     for item in _records(payload, _BALANCE_KEYS):
-        balance, currency = _amount(_pick(item, _BALANCE_KEYS))
+        # Finary values the user's share of each account in euros (joint accounts, other
+        # currencies): that is what their wealth is made of.
+        if item.get("total_owned_value_eur") not in (None, ""):
+            balance, currency = _amount(item["total_owned_value_eur"])[0], "EUR"
+        else:
+            balance, currency = _amount(_pick(item, _BALANCE_KEYS))
+            currency = _currency(item) or currency
         identifier = _pick(item, _ID_KEYS)
         label = _name(_pick(item, _LABEL_KEYS))
         if identifier is None and label is None:
@@ -392,9 +443,9 @@ def accounts_from(payload: Any) -> list[Account]:
                 label=label or str(identifier),
                 kind=account_kind(*kind_text),
                 balance=balance,
-                currency=_currency(item) or currency or "EUR",
+                currency=currency or "EUR",
                 subtype=next((text for text in kind_text if text), None),
-                institution=_name(_pick(item, _INSTITUTION_KEYS)),
+                institution=_institution(item, included),
             )
         )
     return found
@@ -461,6 +512,13 @@ class FinaryConnector:
         payload = self._mcp.call("accounts")
         log.info("Finary accounts answer: %s", json.dumps(shape(payload)))
         found = accounts_from(payload)
+        # Category names, not personal data: they tune the account kinds.
+        log.info("Finary account types: %s", sorted({str(a.subtype) for a in found}))
+        log.info(
+            "Finary institutions found for %s of %s accounts",
+            sum(bool(a.institution) for a in found),
+            len(found),
+        )
         if not found:
             raise ConnectorError(
                 ErrorCode.UNEXPECTED,
