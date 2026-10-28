@@ -257,3 +257,23 @@ def test_holdings_follow_links_whose_type_differs_from_the_resource() -> None:
         "USD",
     )
     assert holding.fees == Decimal("0.002")  # 0.2 means 0.2%
+
+
+def test_link_diagnostics_show_formats_but_no_ids(caplog: pytest.LogCaptureFixture) -> None:
+    payload = {
+        "data": [
+            {
+                "id": "901",
+                "type": "holdings",
+                "attributes": {"name": "", "current_value": "10"},
+                "relationships": {"asset": {"data": {"type": "assets", "id": "123456"}}},
+            }
+        ],
+        "included": [{"id": "777777", "type": "securities", "attributes": {"isin": "IE00B4L5Y983"}}],
+    }
+    found = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    with caplog.at_level("INFO"):
+        finary._log_links(payload, found)
+    line = caplog.messages[-1]
+    assert "link ids ['digits:6'], included ids ['digits:6']; same ids 0" in line
+    assert "123456" not in line and "777777" not in line and "IE00B4L5Y983" not in line

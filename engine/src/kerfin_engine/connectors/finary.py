@@ -524,6 +524,50 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
     return by_account
 
 
+def _id_format(value: str) -> str:
+    """What an id looks like, without the id: "digits:6", "uuid", "alnum:24"..."""
+    if value.isdigit():
+        return f"digits:{len(value)}"
+    if re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", value, re.I):
+        return "uuid"
+    return f"{'alnum' if value.isalnum() else 'other'}:{len(value)}"
+
+
+def _log_links(payload: Any, found: list[Holding]) -> None:
+    """How holdings link to their securities: type labels, id formats and overlaps (never
+    the ids or values), to read Finary's layout."""
+    data = payload.get("data") if isinstance(payload, Mapping) else None
+    links = [
+        ((item.get("relationships") or {}).get("asset") or {}).get("data") or {}
+        for item in data or []
+        if isinstance(item, Mapping)
+    ]
+    link_ids = [str(link.get("id")) for link in links if link.get("id") is not None]
+    included = _included(payload)
+    security_ids = [resource_id for (kind, resource_id) in included if kind != "currencies"]
+    data_ids = {str(item.get("id")) for item in data or [] if isinstance(item, Mapping)}
+    named = sum(
+        bool(_name(_pick(_flat(item), _LABEL_KEYS))) for item in data or [] if isinstance(item, Mapping)
+    )
+    log.info(
+        "Finary holdings: %s of %s with ISIN, %s named; link types %s, included types %s;"
+        " link ids %s, included ids %s; same ids %s, link ids equal to holding ids %s,"
+        " one id inside the other %s; types %s, fees %s",
+        sum(bool(h.isin) for h in found),
+        len(found),
+        named,
+        sorted({str(link.get("type")) for link in links}),
+        sorted({kind for kind, _ in included}),
+        sorted({_id_format(i) for i in link_ids}),
+        sorted({_id_format(i) for i in security_ids}),
+        len(set(link_ids) & set(security_ids)),
+        len(set(link_ids) & data_ids),
+        sum(any(a in b or b in a for b in security_ids) for a in link_ids),
+        sorted({str(h.security_type) for h in found}),
+        sorted({str(h.fees) for h in found}),
+    )
+
+
 _FEE_KEYS = ("expense_ratio", "ongoing_charges", "ter", "fees")
 _SECURITY_TYPE_KEYS = ("security_type", "asset_type", "holding_type")
 
@@ -627,28 +671,7 @@ class FinaryConnector:
                 log.info("Finary holdings answer: %s", json.dumps(shape(payload)))
                 self._holdings = {}
             found = [holding for holdings in holdings_from(payload).values() for holding in holdings]
-            # Public fund data and type labels, not personal: they tell how Finary links and
-            # writes holdings.
-            data = payload.get("data") if isinstance(payload, Mapping) else None
-            log.info(
-                "Finary holdings: link types %s, included types %s, with ISIN %s of %s, types %s, fees %s",
-                sorted(
-                    {
-                        str(
-                            (((item.get("relationships") or {}).get("asset") or {}).get("data") or {}).get(
-                                "type"
-                            )
-                        )
-                        for item in data or []
-                        if isinstance(item, Mapping)
-                    }
-                ),
-                sorted({key[0] for key in _included(payload)}),
-                sum(bool(h.isin) for h in found),
-                len(found),
-                sorted({str(h.security_type) for h in found}),
-                sorted({str(h.fees) for h in found}),
-            )
+            _log_links(payload, found)
             return found
         log.info("Finary holdings needs %s: not read yet", required)
         return []
