@@ -64,6 +64,11 @@ jobs:
           uv run --no-project python scripts/set_version.py "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Refresh index weights from MSCI's factsheets
+        # The weights committed in the repository are used if MSCI can't be reached.
+        continue-on-error: true
+        run: uv run --no-project --with pypdf python scripts/update_index_profiles.py
+
       - name: Build the bundled engine
         run: uv run --no-project python scripts/build_engine.py
 

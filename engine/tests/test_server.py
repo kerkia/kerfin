@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import NoMarket
 
 from kerfin_engine import institutions, paths
 from kerfin_engine import server as server_module
@@ -26,7 +27,7 @@ def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
     monkeypatch.setenv("KERFIN_DEMO", "1")
     monkeypatch.setitem(vault_module.DEFAULT_KDF, "memory_cost", 1024)
     monkeypatch.setitem(vault_module.DEFAULT_KDF, "iterations", 1)
-    server = Server(App(tmp_path), TOKEN)
+    server = Server(App(tmp_path, market=NoMarket), TOKEN)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
 

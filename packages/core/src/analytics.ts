@@ -121,7 +121,9 @@ export function changeOver(series: HistoryPoint[], days: number): { absolute: nu
 
 /** Periods the overview can show, as on most portfolio apps. */
 export const RANGES = ["1D", "7D", "1M", "3M", "6M", "YTD", "1Y", "ALL"] as const;
-export type Range = (typeof RANGES)[number];
+/** Market history goes back years: longer periods, no 1D/7D. */
+export const PERFORMANCE_RANGES = ["1M", "3M", "6M", "YTD", "1Y", "3Y", "5Y", "10Y", "ALL"] as const;
+export type Range = (typeof RANGES)[number] | (typeof PERFORMANCE_RANGES)[number];
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -149,7 +151,10 @@ export function rangeStart(range: Range, today: string): string | null {
     case "YTD":
       return `${today.slice(0, 4)}-01-01`;
     case "1Y":
-      date.setUTCFullYear(date.getUTCFullYear() - 1);
+    case "3Y":
+    case "5Y":
+    case "10Y":
+      date.setUTCFullYear(date.getUTCFullYear() - Number.parseInt(range, 10));
       break;
     case "ALL":
       return null;

@@ -6,6 +6,7 @@ import type {
   Holding,
   Institution,
   Job,
+  Market,
   Overview,
   Prompt,
   Transaction,
@@ -82,6 +83,7 @@ export const engine = {
   institutions: () => call<Institution[]>("GET", "/api/institutions"),
   fields: (institution: string) => call<Prompt[]>("GET", `/api/institutions/${institution}/fields`),
   overview: () => call<Overview>("GET", "/api/overview"),
+  market: () => call<Market>("GET", "/api/market"),
 
   addConnection: (institution: string, label: string, values: Record<string, string>, remember: boolean) =>
     call<{ connection_id: string; job: Job }>("POST", "/api/connections", {

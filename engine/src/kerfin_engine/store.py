@@ -62,7 +62,32 @@ CREATE TABLE holdings (
     unit_price TEXT,
     valuation TEXT,
     currency TEXT,
-    value_date TEXT
+    value_date TEXT,
+    unit_value_currency TEXT,
+    security_type TEXT,
+    fees TEXT
+);
+-- Market data for the securities held: where their prices come from, and the prices.
+CREATE TABLE securities (
+    isin TEXT PRIMARY KEY,
+    symbol TEXT,                   -- NULL when no price source matched
+    currency TEXT,
+    checked_at TEXT NOT NULL,
+    quote_type TEXT,               -- EQUITY, ETF, MUTUALFUND
+    sector TEXT,                   -- company shares: the source's sector name
+    country TEXT                   -- company shares: where the company is based
+);
+CREATE TABLE prices (
+    isin TEXT NOT NULL,
+    date TEXT NOT NULL,
+    close TEXT NOT NULL,           -- adjusted for distributions, in the security's currency
+    PRIMARY KEY (isin, date)
+);
+CREATE TABLE fx_rates (
+    currency TEXT NOT NULL,
+    date TEXT NOT NULL,
+    rate TEXT NOT NULL,            -- units of `currency` for one euro (ECB reference rate)
+    PRIMARY KEY (currency, date)
 );
 CREATE TABLE transactions (
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -81,13 +106,24 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
     1: (
         "ALTER TABLE accounts ADD COLUMN kind_override TEXT",
         "ALTER TABLE accounts ADD COLUMN insurer TEXT",
+    ),
+    2: (
+        "ALTER TABLE holdings ADD COLUMN unit_value_currency TEXT",
+        "ALTER TABLE holdings ADD COLUMN security_type TEXT",
+        "ALTER TABLE holdings ADD COLUMN fees TEXT",
+        "CREATE TABLE securities (isin TEXT PRIMARY KEY, symbol TEXT, currency TEXT,"
+        " checked_at TEXT NOT NULL, quote_type TEXT, sector TEXT, country TEXT)",
+        "CREATE TABLE prices (isin TEXT NOT NULL, date TEXT NOT NULL, close TEXT NOT NULL,"
+        " PRIMARY KEY (isin, date))",
+        "CREATE TABLE fx_rates (currency TEXT NOT NULL, date TEXT NOT NULL, rate TEXT NOT NULL,"
+        " PRIMARY KEY (currency, date))",
     ),
 }
 
@@ -245,7 +281,9 @@ class Store:
                 if holdings is not None:
                     db.execute("DELETE FROM holdings WHERE account_id = ?", (account_id,))
                     db.executemany(
-                        "INSERT INTO holdings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO holdings (account_id, label, isin, quantity, unit_value, unit_price,"
+                        " valuation, currency, value_date, unit_value_currency, security_type, fees)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [
                             (
                                 account_id,
@@ -257,6 +295,9 @@ class Store:
                                 _text(h.valuation),
                                 h.currency,
                                 _text(h.value_date),
+                                h.unit_value_currency,
+                                h.security_type,
+                                _text(h.fees),
                             )
                             for h in holdings
                         ],
@@ -388,12 +429,69 @@ class Store:
             row["insurer_suggested"] = None if row["insurer"] else insurers.suggest(row["label"])
         return rows
 
-    def holdings(self, account_id: str) -> list[dict[str, Any]]:
+    def holdings(self, account_id: str | None = None) -> list[dict[str, Any]]:
+        """One account's holdings, or every holding (with its account) when `account_id` is None."""
         return self._rows(
-            "SELECT label, isin, quantity, unit_value, unit_price, valuation, currency, value_date"
-            " FROM holdings WHERE account_id = ? ORDER BY CAST(valuation AS REAL) DESC",
+            "SELECT account_id, label, isin, quantity, unit_value, unit_price, valuation, currency,"
+            " value_date, unit_value_currency, security_type, fees"
+            " FROM holdings WHERE ? IS NULL OR account_id = ? ORDER BY CAST(valuation AS REAL) DESC",
+            account_id,
             account_id,
         )
+
+    # Market data
+
+    def security(self, isin: str) -> dict[str, Any] | None:
+        rows = self._rows("SELECT * FROM securities WHERE isin = ?", isin)
+        return rows[0] if rows else None
+
+    def save_security(
+        self,
+        isin: str,
+        symbol: str | None,
+        currency: str | None,
+        quote_type: str | None = None,
+        sector: str | None = None,
+        country: str | None = None,
+    ) -> None:
+        with self.transaction() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO securities"
+                " (isin, symbol, currency, checked_at, quote_type, sector, country)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (isin, symbol, currency, _now(), quote_type, sector, country),
+            )
+
+    def last_price_date(self, isin: str) -> str | None:
+        return self._rows("SELECT MAX(date) AS d FROM prices WHERE isin = ?", isin)[0]["d"]
+
+    def save_prices(self, isin: str, points: Iterable[tuple[date, Decimal]]) -> None:
+        with self.transaction() as db:
+            db.executemany(
+                "INSERT OR REPLACE INTO prices VALUES (?, ?, ?)",
+                [(isin, day.isoformat(), str(close)) for day, close in points],
+            )
+
+    def last_rate_date(self, currency: str) -> str | None:
+        return self._rows("SELECT MAX(date) AS d FROM fx_rates WHERE currency = ?", currency)[0]["d"]
+
+    def save_rates(self, currency: str, points: Iterable[tuple[date, Decimal]]) -> None:
+        with self.transaction() as db:
+            db.executemany(
+                "INSERT OR REPLACE INTO fx_rates VALUES (?, ?, ?)",
+                [(currency, day.isoformat(), str(rate)) for day, rate in points],
+            )
+
+    def market(self) -> dict[str, Any]:
+        """Prices and exchange rates as compact series: {key: [[date, value], ...]}."""
+        prices: dict[str, list[list[str]]] = {}
+        for row in self._rows("SELECT isin, date, close FROM prices ORDER BY isin, date"):
+            prices.setdefault(row["isin"], []).append([row["date"], row["close"]])
+        rates: dict[str, list[list[str]]] = {}
+        for row in self._rows("SELECT currency, date, rate FROM fx_rates ORDER BY currency, date"):
+            rates.setdefault(row["currency"], []).append([row["date"], row["rate"]])
+        securities = {row["isin"]: row for row in self._rows("SELECT * FROM securities")}
+        return {"securities": securities, "prices": prices, "fx": rates}
 
     def transactions(self, account_id: str, limit: int = 100) -> list[dict[str, Any]]:
         rows = self._rows(

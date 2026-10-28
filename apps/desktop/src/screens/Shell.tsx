@@ -8,10 +8,11 @@ import { engine } from "../engine";
 import { t } from "../i18n";
 import type { useUpdater } from "../updater";
 import { Accounts } from "./Accounts";
+import { InvestmentsPage } from "./Investments";
 import { OverviewPage } from "./Overview";
 import { Settings } from "./Settings";
 
-type Page = "overview" | "accounts" | "settings";
+type Page = "overview" | "investments" | "accounts" | "settings";
 
 /** Pinned above every page while an update waits for a restart (or is being installed). */
 function UpdateBar({ updater }: { updater: ReturnType<typeof useUpdater> }) {
@@ -53,7 +54,7 @@ export function Shell({
               <span className="brand-mark" />
               Kerfin
             </div>
-            {(["overview", "accounts", "settings"] as const).map((id) => (
+            {(["overview", "investments", "accounts", "settings"] as const).map((id) => (
               <button
                 key={id}
                 className={page === id ? "nav-item active" : "nav-item"}
@@ -73,6 +74,7 @@ export function Shell({
             <UpdateBar updater={updater} />
             <div className="page">
               {page === "overview" && <OverviewPage onNavigate={setPage} />}
+              {page === "investments" && <InvestmentsPage />}
               {page === "accounts" && <Accounts />}
               {page === "settings" && <Settings status={status} onStatus={onStatus} updater={updater} />}
             </div>

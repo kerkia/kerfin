@@ -53,6 +53,9 @@ class Holding:
     unit_value: Decimal | None = None
     unit_price: Decimal | None = None  # average purchase price
     value_date: date | None = None
+    unit_value_currency: str | None = None  # the security's quote currency, when it differs
+    security_type: str | None = None  # as the source names it ("etf", "fund"...)
+    fees: Decimal | None = None  # yearly ongoing charges, as a fraction (0.002 = 0.2%)
 
 
 @dataclass(frozen=True)

@@ -78,6 +78,30 @@ data at rest (stolen or backed-up disk, other users), not a compromised session.
 - `scripts/build_engine.py` bundles a relocatable CPython (python-build-standalone, via uv),
   the engine and its dependencies, and the matching Woob modules.
 
+## Market data
+
+The Investments page analyses the funds and shares Finary reports (ISIN, value, price,
+fees). `engine/src/kerfin_engine/market.py` collects, after each Finary sync:
+
+- **Price histories** from Yahoo Finance's public quote data, found by ISIN or else by the
+  fund's name. A candidate is kept only if its latest price matches Finary's price for the
+  security (within 3%, after currency conversion), so a wrong share class is never used.
+  Closes are adjusted for distributions. Unmatched securities are retried weekly.
+- **Exchange rates** from the ECB's daily reference rates (official, free).
+- **Company shares**: sector from the quote search, country from Wikidata (open data).
+
+Fund composition (country, sector) comes from the index each equity fund follows,
+matched by name: MSCI publishes every index's weights in a monthly public factsheet, and
+`scripts/update_index_profiles.py` reads them at each release into
+`engine/src/kerfin_engine/data/index_profiles.json`. US funds (S&P 500, Nasdaq) use MSCI
+North America as an approximation. Other funds count as not covered, and the page says
+which share of the money each breakdown covers.
+
+The performance chart prices today's holdings over the period as if held unchanged,
+chaining day-to-day returns of the holdings priced on both days, in the chosen currency.
+All of this lives in the vault: prices aren't personal, but which securities someone holds
+is. The analytics are in `packages/core/src/investments.ts`.
+
 ## Connectors
 
 ### Finary

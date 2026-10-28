@@ -32,6 +32,7 @@ from kerfin_engine import browsers, institutions, paths
 from kerfin_engine.connectors import finary, registry
 from kerfin_engine.connectors.base import ConnectorError
 from kerfin_engine.domain import AccountKind
+from kerfin_engine.market import MarketData, index_profiles
 from kerfin_engine.store import Store
 from kerfin_engine.sync import SyncService
 from kerfin_engine.vault import Vault, VaultError, WrongPassphrase
@@ -77,7 +78,8 @@ class _FinarySignIn:
 class App:
     """The engine's state: the vault, the unlocked store and the sync jobs."""
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, market: Callable[[Store], MarketData] = MarketData) -> None:
+        self.market = market  # replaced in tests, which mustn't reach the internet
         self.vault = Vault(data_dir / "kerfin.vault")
         self.store: Store | None = None
         self.sync: SyncService | None = None
@@ -167,7 +169,7 @@ class App:
 
     def _open(self, store: Store) -> None:
         self.store = store
-        self.sync = SyncService(store, self.persist)
+        self.sync = SyncService(store, self.persist, self.market)
         self.last_activity = time.monotonic()
 
     def lock(self) -> None:
@@ -444,6 +446,14 @@ def add_manual_account(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
     )
     app.persist()
     return {"id": account_id}
+
+
+@route("GET", "/api/market")
+def market_data(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
+    """Everything the investment analyses need: holdings, their price histories, euro
+    exchange rates, and the composition of the main indices."""
+    store, _sync = app.unlocked()
+    return {"holdings": store.holdings(), **store.market(), "indices": index_profiles()}
 
 
 @route("GET", "/api/accounts/(?P<id>\\w+)")

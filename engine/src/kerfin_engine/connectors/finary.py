@@ -493,18 +493,40 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
         unit_price, _ = _amount(
             _pick(item, ("unit_price", "buying_price", "average_price", "cost_basis_per_unit"))
         )
+        fees, _ = _amount(_pick(item, _FEE_KEYS) or _pick(security, _FEE_KEYS))
         by_account.setdefault(None if account is None else str(account), []).append(
             Holding(
                 label=_name(_pick(item, _LABEL_KEYS)) or _name(_pick(security, _LABEL_KEYS)) or isin or "?",
                 valuation=valuation,
-                currency=_currency(item) or currency,
+                currency=_upper(item.get("current_value_currency")) or _currency(item) or currency,
                 isin=str(isin) if isin else None,
                 quantity=quantity,
                 unit_value=unit_value,
                 unit_price=unit_price,
+                unit_value_currency=_upper(
+                    _pick(security, ("current_price_currency_code", "currency_code", "currency"))
+                ),
+                security_type=_name(_pick(item, _SECURITY_TYPE_KEYS) or _pick(security, _SECURITY_TYPE_KEYS)),
+                fees=_fraction(fees),
             )
         )
     return by_account
+
+
+_FEE_KEYS = ("expense_ratio", "ongoing_charges", "ter", "fees")
+_SECURITY_TYPE_KEYS = ("security_type", "asset_type", "holding_type")
+
+
+def _upper(value: Any) -> str | None:
+    return str(value).upper() if isinstance(value, str) and value else None
+
+
+def _fraction(ratio: Decimal | None) -> Decimal | None:
+    """A yearly fee as a fraction. Sources give 0.2 (percent) or 0.002: no fund charges 10% a
+    year, so values above 0.1 are percentages."""
+    if ratio is None:
+        return None
+    return ratio / 100 if ratio > Decimal("0.1") else ratio
 
 
 class FinaryConnector:
@@ -593,8 +615,14 @@ class FinaryConnector:
             if self._holdings is None:
                 log.info("Finary holdings answer: %s", json.dumps(shape(payload)))
                 self._holdings = {}
-            found = holdings_from(payload)
-            return [holding for holdings in found.values() for holding in holdings]
+            found = [holding for holdings in holdings_from(payload).values() for holding in holdings]
+            # Public fund data, not personal: they tell how Finary writes types and fees.
+            log.info(
+                "Finary holding types %s, fees %s",
+                sorted({str(h.security_type) for h in found}),
+                sorted({str(h.fees) for h in found}),
+            )
+            return found
         log.info("Finary holdings needs %s: not read yet", required)
         return []
 

@@ -208,3 +208,16 @@ def fake_finary(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeFinary]:
     yield fake
     fake.server.shutdown()
     fake.server.server_close()
+
+
+class NoMarket:
+    """Market data that stays offline: tests must not reach the internet."""
+
+    calls = 0
+
+    def __init__(self, store: Any) -> None:
+        self.store = store
+
+    def refresh(self) -> dict[str, int]:
+        NoMarket.calls += 1
+        return {}

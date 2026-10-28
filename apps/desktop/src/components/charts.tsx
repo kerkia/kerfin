@@ -4,7 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { compactMoney, longDate, money, percent, shortDate } from "../i18n";
 
 /** Ranked horizontal bars, one hue: each row is a category's share of the total. */
-export function BarList({ slices, label }: { slices: Slice[]; label: (key: string) => string }) {
+export function BarList({
+  slices,
+  label,
+  sharesOnly,
+}: {
+  slices: Slice[];
+  label: (key: string) => string;
+  sharesOnly?: boolean; // percentages without amounts
+}) {
   const max = Math.max(...slices.map((s) => s.value), 1);
   return (
     <div className="bar-list" role="table">
@@ -22,8 +30,8 @@ export function BarList({ slices, label }: { slices: Slice[]; label: (key: strin
             <span className="bar" style={{ width: `${(slice.value / max) * 100}%` }} />
           </span>
           <span role="cell" className="num small">
-            {money(slice.value, "EUR", { maximumFractionDigits: 0 })}{" "}
-            <span className="muted">{percent(slice.share)}</span>
+            {!sharesOnly && <>{money(slice.value, "EUR", { maximumFractionDigits: 0 })} </>}
+            <span className={sharesOnly ? undefined : "muted"}>{percent(slice.share)}</span>
           </span>
         </div>
       ))}
@@ -46,7 +54,7 @@ function niceTicks(min: number, max: number, count = 4): number[] {
 }
 
 /** Single-series line with an area wash, a crosshair and a tooltip. */
-export function LineChart({ series }: { series: HistoryPoint[] }) {
+export function LineChart({ series, currency = "EUR" }: { series: HistoryPoint[]; currency?: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
   const [hover, setHover] = useState<number | null>(null);
@@ -105,13 +113,13 @@ export function LineChart({ series }: { series: HistoryPoint[] }) {
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         role="img"
-        aria-label={series.map((p) => `${p.date}: ${money(p.value)}`).join(", ")}
+        aria-label={series.map((p) => `${p.date}: ${money(p.value, currency)}`).join(", ")}
       >
         {ticks.map((tick) => (
           <g key={tick}>
             <line x1={PAD.left} x2={width - PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
             <text x={PAD.left - 8} y={y(tick) + 4} textAnchor="end">
-              {compactMoney(tick)}
+              {compactMoney(tick, currency)}
             </text>
           </g>
         ))}
@@ -154,7 +162,7 @@ export function LineChart({ series }: { series: HistoryPoint[] }) {
           }}
         >
           <div className="muted">{longDate(point.date)}</div>
-          <div className="num">{money(point.value)}</div>
+          <div className="num">{money(point.value, currency)}</div>
         </div>
       )}
     </div>

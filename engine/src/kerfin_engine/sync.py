@@ -19,6 +19,7 @@ from kerfin_engine import institutions
 from kerfin_engine.connectors import registry
 from kerfin_engine.connectors.base import ConnectorError, ErrorCode, Prompt
 from kerfin_engine.domain import AccountKind
+from kerfin_engine.market import MarketData
 from kerfin_engine.store import Store, new_id
 
 log = logging.getLogger(__name__)
@@ -112,9 +113,15 @@ class Job:
 
 
 class SyncService:
-    def __init__(self, store: Store, on_change: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        store: Store,
+        on_change: Callable[[], None],
+        market: Callable[[Store], MarketData] = MarketData,
+    ) -> None:
         self._store = store
         self._on_change = on_change  # persists the store
+        self._market = market
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
@@ -168,6 +175,8 @@ class SyncService:
                 collected.append((account, holdings, transactions or []))
             job.accounts_found = self._store.save_sync(job.connection_id, collected)
             self._store.record_sync(job.connection_id, "ok")
+            if any(holdings for _, holdings, _ in collected):
+                self._refresh_market(job)
             job.state = JobState.DONE
         except _Cancelled:
             job.state = JobState.CANCELLED
@@ -198,6 +207,14 @@ class SyncService:
                 self._on_change()
             except Exception:
                 log.exception("Saving after sync failed")
+
+    def _refresh_market(self, job: Job) -> None:
+        """Prices and exchange rates for the performance analyses; never fails the sync."""
+        job.notify("Updating prices and exchange rates…")
+        try:
+            self._market(self._store).refresh()
+        except Exception:
+            log.exception("Market data refresh failed")
 
     @staticmethod
     def _detail(

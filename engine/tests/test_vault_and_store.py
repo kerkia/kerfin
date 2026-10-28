@@ -129,12 +129,18 @@ def test_insurer_is_suggested_from_the_contract_name() -> None:
 
 def test_older_vaults_are_migrated() -> None:
     store = Store.create()
+    # Back to the first schema: what versions 2 and 3 added goes.
     for column in ("kind_override", "insurer"):
         store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
+    for column in ("unit_value_currency", "security_type", "fees"):
+        store._db.execute(f"ALTER TABLE holdings DROP COLUMN {column}")
+    for table in ("securities", "prices", "fx_rates"):
+        store._db.execute(f"DROP TABLE {table}")
     store._db.execute("PRAGMA user_version = 1")
     store.add_manual_account("Baloise", "Luxavie", AccountKind.LIFE_INSURANCE, Decimal("5"), "EUR")
 
     migrated = Store.load(store.dump())
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert migrated.holdings() == [] and migrated.market()["prices"] == {}
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 3
