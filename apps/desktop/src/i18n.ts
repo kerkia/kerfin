@@ -26,8 +26,6 @@ const en = {
   "nav.investments": "Investments",
   "inv.title": "Investments",
   "inv.currency": "Currency",
-  "match.order": "guessed",
-  "match.orderHelp": "Finary doesn't say which value belongs to which fund: Kerfin pairs them by ISIN order, the order Finary lists its values in (checked on one account). Check against Finary.",
   "match.order_uncertain": "uncertain",
   "match.order_uncertainHelp": "Paired by order, but Finary gives a different number of values and funds for this account: some pairs are surely wrong. Check against Finary.",
   "match.unpaired": "no value",
@@ -156,8 +154,6 @@ const en = {
   "panel.none": "No holdings for this account.",
   "panel.unnamed": "Unnamed holding",
   "panel.fund": "Fund (guessed) · value from Finary",
-  "panel.guessed":
-    "Finary doesn't say which value belongs to which fund: Kerfin pairs them by ISIN order, the order Finary lists its values in, with euro funds and other named lines set aside. Check each line against Finary.",
   "panel.uncertain":
     "Finary lists {values} values and {funds} funds for this account, so pairing them in order is surely wrong somewhere. Lines are numbered in Finary's order: check them against Finary.",
   "detail.insurer": "Insurer",

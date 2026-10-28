@@ -817,9 +817,16 @@ th:hover .sort-mark.idle {
 .editor-fields .field {
   min-width: 160px;
 }
+/* With an account's holdings open, the page takes the window's width and the holdings
+   get a large share of it; the overview on the left stacks its cards. */
+.page:has(.with-aside) {
+  max-width: 1840px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
 .with-aside {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -831,11 +838,6 @@ th:hover .sort-mark.idle {
 }
 .with-aside .grid-2 {
   grid-template-columns: 1fr;
-}
-@media (min-width: 1500px) {
-  .with-aside .grid-2 {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 @media (max-width: 1000px) {
   .with-aside {

@@ -329,9 +329,12 @@ export function InvestmentsPage() {
   );
 }
 
-/** Marks a security Kerfin paired with its value by guessing (see HoldingMatch). */
+/**
+ * Marks a security whose value is in doubt (see HoldingMatch). Pairing in ISIN order is
+ * reliable (checked against Finary on two accounts), so only mismatched counts are marked.
+ */
 export function MatchTag({ match }: { match: string | null }) {
-  if (match !== "order" && match !== "order_uncertain" && match !== "unpaired") return null;
+  if (match !== "order_uncertain" && match !== "unpaired") return null;
   return (
     <span className={`tag match-tag ${match}`} title={t(`match.${match}Help`)}>
       {t(`match.${match}`)}

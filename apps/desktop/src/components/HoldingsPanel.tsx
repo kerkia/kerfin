@@ -25,12 +25,12 @@ export function HoldingsPanel({ account, onClose }: { account: Account; onClose:
   const list = holdings ?? [];
   const total = list.reduce((sum, h) => sum + Math.max(amount(h.valuation), 0), 0);
   const insurer = accountInsurer(account);
-  const guessed = list.some((h) => h.match === "order" || h.match === "order_uncertain");
+  // Pairing in ISIN order is reliable; only mismatched counts leave values in doubt.
   const uncertain = list.some((h) => h.match === "order_uncertain" || h.match === "unpaired");
   const values = list.filter((h) => h.match !== "unpaired").length;
   const funds = list.filter((h) => h.isin || h.match === "unpaired").length;
-  // A guessed pairing is shown in the source's order; otherwise largest first.
-  const shown = guessed ? list : [...list].sort((a, b) => amount(b.valuation) - amount(a.valuation));
+  // In doubt, lines keep the source's order so they can be checked; otherwise largest first.
+  const shown = uncertain ? list : [...list].sort((a, b) => amount(b.valuation) - amount(a.valuation));
 
   return (
     <aside className="card holdings-panel" aria-label={t("panel.title", { name: account.label })}>
@@ -48,11 +48,7 @@ export function HoldingsPanel({ account, onClose }: { account: Account; onClose:
       <div className="panel-value num">
         {account.balance == null ? "–" : money(amount(account.balance), account.currency ?? "EUR")}
       </div>
-      {guessed && (
-        <p className={uncertain ? "panel-note uncertain small" : "panel-note small"}>
-          {uncertain ? t("panel.uncertain", { values, funds }) : t("panel.guessed")}
-        </p>
-      )}
+      {uncertain && <p className="panel-note uncertain small">{t("panel.uncertain", { values, funds })}</p>}
       {holdings === null ? (
         <div className="spinner" />
       ) : list.length === 0 ? (
@@ -63,8 +59,8 @@ export function HoldingsPanel({ account, onClose }: { account: Account; onClose:
         <table className="table holdings-table">
           <thead>
             <tr>
-              {guessed && <th className="right">#</th>}
-              <th>{guessed ? t("panel.fund") : t("panel.holding")}</th>
+              {uncertain && <th className="right">#</th>}
+              <th>{uncertain ? t("panel.fund") : t("panel.holding")}</th>
               <th className="right">{t("portfolio.value")}</th>
               <th className="right">{t("portfolio.share")}</th>
             </tr>
@@ -72,7 +68,7 @@ export function HoldingsPanel({ account, onClose }: { account: Account; onClose:
           <tbody>
             {shown.map((h, i) => (
               <tr key={`${h.isin ?? h.label}-${i}`}>
-                {guessed && <td className="right muted num">{i + 1}</td>}
+                {uncertain && <td className="right muted num">{i + 1}</td>}
                 <td>
                   <div className="holding-name">
                     {h.label === "?" ? t("panel.unnamed") : h.label} <MatchTag match={h.match} />
