@@ -1,7 +1,8 @@
 // Tracks sync jobs: shows progress, asks the questions websites raise (SMS codes...),
 // and reports how each one ended.
 import type { Job } from "@kerfin/core";
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import qrcode from "qrcode-generator";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 import { useData } from "../data";
 import { engine } from "../engine";
@@ -78,11 +79,20 @@ export function JobsProvider({ children }: { children: React.ReactNode }) {
 
   const list = Object.values(tracked);
   const waiting = list.find((x) => x.job.state === "waiting" && x.job.prompt);
+  // Hidden QR codes, by job: a new code from the same job shows again.
+  const [hidden, setHidden] = useState<Record<string, string>>({});
+  const scanning = waiting ? undefined : list.find((x) => x.job.qr_code && hidden[x.job.id] !== x.job.qr_code);
 
   return (
     <JobsContext.Provider value={{ track, active: list.length > 0 }}>
       {children}
       {waiting && <PromptDialog key={waiting.job.id + waiting.job.prompt!.key} tracked={waiting} />}
+      {scanning && (
+        <ScanDialog
+          tracked={scanning}
+          onHide={() => setHidden((all) => ({ ...all, [scanning.job.id]: scanning.job.qr_code! }))}
+        />
+      )}
       <div className="tray" aria-live="polite">
         {list
           .filter((x) => x !== waiting)
@@ -142,6 +152,57 @@ function PromptDialog({ tracked: { job, name } }: { tracked: Tracked }) {
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/** A QR code the institution's app must scan; the job goes on by itself once it's scanned. */
+function ScanDialog({ tracked: { job, name }, onHide }: { tracked: Tracked; onHide: () => void }) {
+  return (
+    <Dialog open onClose={onHide}>
+      <div className="form">
+        <h2>{t("jobs.scanTitle")}</h2>
+        <p className="secondary" style={{ margin: 0 }}>
+          {t("jobs.scanHint", { name })}
+        </p>
+        <QrCode data={job.qr_code!} />
+        <div className="dialog-actions">
+          <button type="button" className="btn" onClick={onHide}>
+            {t("jobs.hide")}
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+const QUIET_ZONE = 4; // blank modules around the code, which scanners need
+
+function QrCode({ data }: { data: string }) {
+  const { size, path } = useMemo(() => {
+    const qr = qrcode(0, "M");
+    qr.addData(data);
+    qr.make();
+    const count = qr.getModuleCount();
+    let path = "";
+    for (let row = 0; row < count; row++) {
+      for (let col = 0; col < count; col++) {
+        if (qr.isDark(row, col)) path += `M${col} ${row}h1v1h-1z`;
+      }
+    }
+    return { size: count + 2 * QUIET_ZONE, path };
+  }, [data]);
+  return (
+    <svg
+      className="qr-code"
+      viewBox={`${-QUIET_ZONE} ${-QUIET_ZONE} ${size} ${size}`}
+      role="img"
+      aria-label={t("jobs.scanCode")}
+      shapeRendering="crispEdges"
+    >
+      {/* Black on white in both themes: phone scanners expect it. */}
+      <rect x={-QUIET_ZONE} y={-QUIET_ZONE} width={size} height={size} fill="#fff" />
+      <path d={path} fill="#000" />
+    </svg>
   );
 }
 

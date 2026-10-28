@@ -103,6 +103,8 @@ export interface Job {
   state: JobState;
   prompt: Prompt | null;
   messages: string[];
+  /** A code to scan with the institution's app (e.g. BoursoBank's proximity check). */
+  qr_code: string | null;
   error: { code: string; detail: string } | null;
   accounts_found: number;
 }

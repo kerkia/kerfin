@@ -13,6 +13,11 @@ dependencies = [
     # Needed by the apivie module (its requirements.txt wrongly names it "jwt").
     "pyjwt>=2",
     "cryptography>=44",
+    # Needed by Woob modules: Banque Populaire and Caisse d'Épargne (python-jose, chompjs),
+    # NEF and some employee savings sites (pycryptodomex).
+    "python-jose>=3.3",
+    "chompjs>=1.2",
+    "pycryptodomex>=3.20",
 ]
 
 [project.scripts]

@@ -42,6 +42,10 @@ class TerminalInteraction:
     def notify(self, message: str) -> None:
         console.print(f"[yellow]{message}[/yellow]")
 
+    def show_qr_code(self, data: str | None) -> None:
+        if data:
+            console.print("[yellow]The website asks to scan a QR code: log in from the desktop app.[/yellow]")
+
 
 def _amount(value: Decimal | None, currency: str | None, redact: bool) -> str:
     if value is None:
@@ -51,7 +55,7 @@ def _amount(value: Decimal | None, currency: str | None, redact: bool) -> str:
 
 def cmd_institutions(_: argparse.Namespace) -> int:
     table = Table("id", "institution", "products", "connector", "status")
-    for institution in institutions.CATALOG:
+    for institution in institutions.catalog():
         status = "[green]ready to test[/green]" if institution.implemented else "planned"
         table.add_row(institution.id, institution.name, institution.products, institution.connector, status)
     console.print(table)
@@ -64,6 +68,9 @@ def cmd_woob_modules(args: argparse.Namespace) -> int:
     if args.install:
         with console.status(f"Downloading Woob modules for commit {pinned[:10]}..."):
             woob_modules.install(modules_dir, pinned)
+        with console.status("Listing the institutions they serve..."):
+            listed = institutions.write_woob_catalog(modules_dir)
+        console.print(f"{len(listed)} modules serve bank or investment accounts")
     installed = woob_modules.installed_commit(modules_dir)
     console.print(f"Woob core commit:    {pinned}")
     console.print(f"Woob modules commit: {installed or '[red]not installed[/red]'} ({modules_dir})")

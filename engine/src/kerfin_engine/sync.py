@@ -57,6 +57,7 @@ class Job:
     state: JobState = JobState.RUNNING
     prompt: Prompt | None = None
     messages: list[str] = field(default_factory=list)
+    qr_code: str | None = None  # for the user to scan with the institution's app
     error_code: str | None = None
     error_detail: str | None = None
     accounts_found: int = 0
@@ -80,6 +81,9 @@ class Job:
     def notify(self, message: str) -> None:
         self.messages.append(message)
 
+    def show_qr_code(self, data: str | None) -> None:
+        self.qr_code = data
+
     # Called from the UI
 
     def answer(self, value: str) -> None:
@@ -101,6 +105,7 @@ class Job:
             "state": self.state,
             "prompt": asdict(self.prompt) if self.prompt else None,
             "messages": self.messages,
+            "qr_code": None if self.finished else self.qr_code,
             "error": {"code": self.error_code, "detail": self.error_detail} if self.error_code else None,
             "accounts_found": self.accounts_found,
         }

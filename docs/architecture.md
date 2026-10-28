@@ -90,3 +90,13 @@ releases and module repository lag far behind its git history, so:
 
 The packaged app ships the modules of the pinned commit. To deliver site fixes, bump the
 commit and push: the release pipeline updates every installed copy.
+
+- The catalogue offers every module that reads bank or investment accounts and loads with
+  the packages the engine ships. Installing the modules saves that list beside them
+  (`kerfin-catalog.json`), since loading every module takes seconds.
+- `connectors/woob_fixes.py` patches what the pinned commit doesn't handle, such as
+  BoursoBank's QR code check ("vérification de proximité"), which the UI shows for the
+  user to scan with the bank's app.
+- Some websites turn away anything that isn't a real browser (e.g. Cloudflare bot
+  protection answering 403, or connections dropped during the TLS handshake). Kerfin
+  reports these as `blocked` or `connection_failed` and doesn't try to get around them.

@@ -513,3 +513,11 @@ table.table {
   flex-direction: column;
   gap: 16px;
 }
+
+/* QR codes to scan with an institution's app */
+.qr-code {
+  display: block;
+  width: min(260px, 100%);
+  margin: 0 auto;
+  border-radius: 8px;
+}

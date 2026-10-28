@@ -1,11 +1,13 @@
 """A fake institution with made-up data, to try the app and test it without a real login.
 
 Only listed when KERFIN_DEMO=1. It asks for an SMS code like a real bank would (any
-6 digits work); the password "wrong" fails the login.
+6 digits work); the password "wrong" fails the login, and the password "qr" shows a QR
+code to scan instead of asking for an SMS code.
 """
 
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -14,8 +16,10 @@ from kerfin_engine.domain import Account, AccountKind, Holding, Transaction
 
 FIELDS = (
     Prompt(key="login", label="Login (any)"),
-    Prompt(key="password", label='Password ("wrong" fails)', secret=True),
+    Prompt(key="password", label='Password ("wrong" fails, "qr" shows a QR code)', secret=True),
 )
+
+QR_SECONDS = 6
 
 _ACCOUNTS = (
     Account("1", "Livret A", AccountKind.SAVINGS, Decimal("22950.00"), "EUR", "LIVRET_A"),
@@ -40,6 +44,12 @@ class DemoConnector:
             raise ConnectorError(ErrorCode.INVALID_CREDENTIALS, "Demo: wrong password")
         if interaction is None:
             raise ConnectorError(ErrorCode.INTERACTION_REQUIRED, "Demo: SMS code needed")
+        if params.get("password") == "qr":
+            interaction.notify("Demo bank: validate in the app. It goes through on its own in a few seconds.")
+            interaction.show_qr_code("https://example.com/kerfin-demo-validation")
+            time.sleep(QR_SECONDS)
+            interaction.show_qr_code(None)
+            return
         interaction.notify('Demo bank: a code was "sent" by SMS. Any 6 digits work.')
         interaction.ask(Prompt(key="otp_sms", label="SMS code", pattern=r"^\d{6}$"))
 

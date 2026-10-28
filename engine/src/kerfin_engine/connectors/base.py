@@ -19,6 +19,9 @@ class ErrorCode(StrEnum):
     CAPTCHA = "captcha"
     BLOCKED = "blocked"
     SITE_UNAVAILABLE = "site_unavailable"
+    # No connection to the website at all (refused, cut or timed out), e.g. a firewall, security
+    # software or the site's bot protection dropping it.
+    CONNECTION_FAILED = "connection_failed"
     # The website's certificate could not be verified: the network may be intercepting traffic.
     INSECURE_CONNECTION = "insecure_connection"
     NOT_SUPPORTED = "not_supported"
@@ -53,6 +56,10 @@ class InteractionHandler(Protocol):
     def ask(self, prompt: Prompt) -> str: ...
 
     def notify(self, message: str) -> None: ...
+
+    def show_qr_code(self, data: str | None) -> None:
+        """Shows a code for the user to scan with their phone app; None hides it."""
+        ...
 
 
 class Connector(Protocol):

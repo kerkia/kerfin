@@ -98,6 +98,11 @@ const en = {
   "jobs.cancelled": "{name}: cancelled",
   "jobs.send": "Send",
   "jobs.cancel": "Cancel",
+  "jobs.scanTitle": "Scan this code with your phone",
+  "jobs.scanHint":
+    "{name} checks that your phone is next to this computer. In its app, follow the steps to approve the login and scan this code when asked. Kerfin carries on by itself once it's done.",
+  "jobs.scanCode": "QR code to scan with the app",
+  "jobs.hide": "Hide",
 
   "settings.title": "Settings",
   "settings.security": "Security",
@@ -148,8 +153,11 @@ const errors: Record<string, string> = {
   interaction_required: "a confirmation is needed: sync again and keep Kerfin open",
   validation_failed: "the validation was refused or expired",
   captcha: "the website asked for a CAPTCHA, which Kerfin can't solve; try again later",
-  blocked: "the website blocked the connection; try again later",
+  blocked:
+    "the website turns away automated access, so Kerfin can't collect this account; you can add its balance manually",
   site_unavailable: "the website is unavailable; try again later",
+  connection_failed:
+    "Kerfin couldn't connect to the website: security software on this computer, the network or the website itself blocks it",
   insecure_connection:
     "the website's identity couldn't be verified; your network may be inspecting traffic",
   not_supported: "this isn't supported for this institution",

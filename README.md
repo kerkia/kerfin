@@ -46,8 +46,8 @@ KERFIN_TOKEN=dev KERFIN_DEV_ORIGIN=http://localhost:5173 KERFIN_DEMO=1 KERFIN_DA
 npm run dev
 ```
 
-The demo bank accepts any login, asks for an SMS code (any 6 digits) and fails with the
-password `wrong`.
+The demo bank accepts any login, asks for an SMS code (any 6 digits), fails with the
+password `wrong`, and shows a QR code to scan with the password `qr`.
 
 Tests: `npm test`, `npm run typecheck`, and `uv run pytest` in `engine/`.
 

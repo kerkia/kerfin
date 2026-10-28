@@ -1,10 +1,24 @@
-"""Catalogue of supported institutions and the connector that collects each one's data."""
+"""Catalogue of supported institutions and the connector that collects each one's data.
+
+The catalogue is a hand-written list (institutions with a tailored name or settings, and
+those waiting for a connector), followed by every other Woob module that reads bank or
+investment accounts.
+"""
 
 from __future__ import annotations
 
+import functools
+import json
+import logging
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
+from typing import Any
+
+from kerfin_engine import paths, woob_modules
+
+log = logging.getLogger(__name__)
 
 
 class ConnectorType(StrEnum):
@@ -49,7 +63,7 @@ CATALOG: tuple[Institution, ...] = (
     Institution(
         "boursobank",
         "BoursoBank",
-        "Livret A, LDD, Matla PER (to confirm)",
+        "Bank accounts, savings, life insurance, PEA, securities",
         ConnectorType.WOOB,
         {"module": "boursorama"},
         implemented=True,
@@ -106,9 +120,75 @@ DEMO = Institution(
 )
 
 
+WOOB_CATALOG_FILE = "kerfin-catalog.json"
+
+# Woob modules left out of the catalogue: superseded by another module, or not about money.
+_WOOB_SKIPPED = {"barclays", "roblox"}
+
+# Better names than the modules' own descriptions.
+_WOOB_NAMES = {
+    "afer": "AFER",
+    "binance": "Binance",
+    "degiro": "DEGIRO",
+    "helios": "Helios",
+    "kraken": "Kraken",
+    "lita": "Lita",
+    "n26": "N26",
+    "suravenir": "Suravenir (assurancevie.com, Linxea, other brokers)",
+}
+
+
+def write_woob_catalog(modules_dir: Path) -> list[dict[str, Any]]:
+    """Lists the installed Woob modules that serve institutions, and saves the list beside them."""
+    from kerfin_engine.connectors.woob_connector import bank_modules
+
+    modules = bank_modules(modules_dir)
+    data = {"commit": woob_modules.installed_commit(modules_dir), "modules": modules}
+    (modules_dir / WOOB_CATALOG_FILE).write_text(
+        json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    return modules
+
+
+@functools.cache
+def _woob_catalog() -> tuple[Institution, ...]:
+    modules_dir = paths.woob_modules_dir()
+    try:
+        data = json.loads((modules_dir / WOOB_CATALOG_FILE).read_text(encoding="utf-8"))
+        if data["commit"] != woob_modules.installed_commit(modules_dir):
+            raise ValueError("catalogue of other modules")
+        modules = data["modules"]
+    except (OSError, ValueError, KeyError):
+        # Modules installed before the catalogue file existed: build it once (a few seconds).
+        try:
+            modules = write_woob_catalog(modules_dir)
+        except Exception:
+            log.exception("Listing the Woob modules failed")
+            return ()
+
+    covered = {
+        institution.settings["module"]
+        for institution in CATALOG
+        if institution.connector is ConnectorType.WOOB and set(institution.settings) == {"module"}
+    }
+    return tuple(
+        Institution(
+            module["module"],
+            _WOOB_NAMES.get(module["module"], module["name"]),
+            "Accounts and investments" if module["investments"] else "Accounts",
+            ConnectorType.WOOB,
+            {"module": module["module"]},
+            implemented=True,
+        )
+        for module in modules
+        if module["module"] not in covered | _WOOB_SKIPPED
+    )
+
+
 def catalog() -> tuple[Institution, ...]:
     """The institutions offered to the user; the demo one only when KERFIN_DEMO=1."""
-    return (*CATALOG, DEMO) if os.environ.get("KERFIN_DEMO") == "1" else CATALOG
+    listed = (*CATALOG, *_woob_catalog())
+    return (*listed, DEMO) if os.environ.get("KERFIN_DEMO") == "1" else listed
 
 
 def get(institution_id: str) -> Institution:

@@ -14,7 +14,7 @@ import requests
 from packaging.version import Version
 from woob import __version__ as woob_version
 from woob.capabilities.bank import Account as WoobAccount
-from woob.capabilities.bank import AccountType
+from woob.capabilities.bank import AccountType, CapBank
 from woob.capabilities.bank.wealth import CapBankWealth, Investment
 from woob.capabilities.base import empty
 from woob.core.modules import LoadedModule, ModulesLoader
@@ -38,6 +38,7 @@ from woob.tools.packaging import parse_requirements
 from woob.tools.value import Value, ValueBackendPassword, ValueTransient
 
 from kerfin_engine import paths
+from kerfin_engine.connectors import woob_fixes
 from kerfin_engine.connectors.base import ConnectorError, ErrorCode, InteractionHandler, Prompt
 from kerfin_engine.domain import Account, AccountKind, Holding, Transaction
 
@@ -127,11 +128,43 @@ def config_prompts(
 ) -> list[Prompt]:
     """The settings a user must fill in to connect with `module` (login, password...)."""
     loaded = _load_module(_woob(modules_dir), module)
+    skipped = {*(fixed or {}), *woob_fixes.UNUSED_SETTINGS.get(module, ())}
     return [
         prompt_from_value(value)
         for key, value in loaded.config.items()
-        if key not in (fixed or {}) and not isinstance(value, ValueTransient)
+        if key not in skipped and not isinstance(value, ValueTransient)
     ]
+
+
+def bank_modules(modules_dir: Path | None = None) -> list[dict[str, Any]]:
+    """The modules that read bank or investment accounts and load with the installed packages.
+
+    Loading every module takes several seconds, so `woob-modules --install` saves this list
+    next to the modules (see `kerfin_engine.institutions`).
+    """
+    woob = _woob(modules_dir)
+    found = []
+    for folder in sorted(Path(woob.modules_path).iterdir()):
+        source = folder / "module.py"
+        # Cheap filter first: importing a module runs its code.
+        if not source.is_file() or "CapBank" not in source.read_text(encoding="utf-8"):
+            continue
+        try:
+            loaded = woob.modules_loader.get_or_load_module(folder.name)
+        except ModuleLoadError:
+            continue  # needs a package the engine doesn't ship (e.g. selenium)
+        settings = [value for value in loaded.config.values() if not isinstance(value, ValueTransient)]
+        # Modules without settings are building blocks of other modules, not institutions.
+        if not issubclass(loaded.klass, CapBank) or not settings:
+            continue
+        found.append(
+            {
+                "module": folder.name,
+                "name": loaded.description,
+                "investments": issubclass(loaded.klass, CapBankWealth),
+            }
+        )
+    return found
 
 
 def prompt_from_value(value: Value[Any]) -> Prompt:
@@ -165,10 +198,12 @@ def translate_error(error: Exception) -> ConnectorError:
         code = ErrorCode.VALIDATION_FAILED
     elif isinstance(error, CaptchaQuestion):
         code = ErrorCode.CAPTCHA
-    elif isinstance(error, (ScrapingBlocked, BrowserForbidden)):
+    elif isinstance(error, (ScrapingBlocked, BrowserForbidden)) or _refused(error):
         code = ErrorCode.BLOCKED
-    elif isinstance(error, requests.exceptions.SSLError):
+    elif isinstance(error, requests.exceptions.SSLError) and "CERTIFICATE_VERIFY_FAILED" in str(error):
         code = ErrorCode.INSECURE_CONNECTION
+    elif isinstance(error, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        code = ErrorCode.CONNECTION_FAILED
     elif isinstance(error, (BrowserUnavailable, ConnectionError, requests.exceptions.RequestException)):
         code = ErrorCode.SITE_UNAVAILABLE
     elif isinstance(error, NotImplementedError):
@@ -176,6 +211,12 @@ def translate_error(error: Exception) -> ConnectorError:
     else:
         return ConnectorError(ErrorCode.UNEXPECTED, f"{type(error).__name__}: {error}")
     return ConnectorError(code, str(error))
+
+
+def _refused(error: Exception) -> bool:
+    """An HTTP 403 or 429: typically bot protection (e.g. Cloudflare) turning the engine away."""
+    response = getattr(error, "response", None) if isinstance(error, requests.exceptions.HTTPError) else None
+    return response is not None and response.status_code in (403, 429)
 
 
 def _opt(value: Any) -> Any:
@@ -253,6 +294,7 @@ class WoobConnector:
             self._backend = self._woob.build_backend(module, params=dict(params), name=module)
         except Exception as exc:
             raise translate_error(exc) from exc
+        woob_fixes.apply(module, self._backend, interaction)
         self._interaction = interaction
         # Woob convention: a non-None value means a user is present to answer challenges.
         if interaction is not None and "request_information" in self._backend.config:

@@ -3,21 +3,31 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import date, datetime
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
+import requests
 from woob.capabilities.bank import Account as WoobAccount
 from woob.capabilities.bank import AccountType
 from woob.capabilities.bank import Transaction as WoobTransaction
 from woob.capabilities.bank.wealth import Investment
 from woob.capabilities.base import NotAvailable
-from woob.exceptions import BrowserIncorrectPassword, BrowserQuestion, DecoupledValidation, ScrapingBlocked
+from woob.exceptions import (
+    AuthMethodNotImplemented,
+    BrowserIncorrectPassword,
+    BrowserQuestion,
+    DecoupledValidation,
+    ScrapingBlocked,
+)
 from woob.tools.value import Value, ValueBackendPassword, ValueTransient
 
 from kerfin_engine import paths
-from kerfin_engine.connectors import ConnectorError, ErrorCode, Prompt
+from kerfin_engine.connectors import ConnectorError, ErrorCode, Prompt, woob_fixes
 from kerfin_engine.connectors.woob_connector import (
     WoobConnector,
     account_from_woob,
+    bank_modules,
     config_prompts,
     holding_from_woob,
     prompt_from_value,
@@ -31,6 +41,7 @@ class ScriptedInteraction:
         self.answers = list(answers)
         self.prompts: list[Prompt] = []
         self.messages: list[str] = []
+        self.qr_codes: list[str | None] = []
 
     def ask(self, prompt: Prompt) -> str:
         self.prompts.append(prompt)
@@ -38,6 +49,9 @@ class ScriptedInteraction:
 
     def notify(self, message: str) -> None:
         self.messages.append(message)
+
+    def show_qr_code(self, data: str | None) -> None:
+        self.qr_codes.append(data)
 
 
 class FakeBackend:
@@ -59,6 +73,12 @@ class FakeBackend:
         account.balance = Decimal("1500.00")
         account.currency = "EUR"
         yield account
+
+
+def http_error(status: int) -> requests.exceptions.HTTPError:
+    response = requests.Response()
+    response.status_code = status
+    return requests.exceptions.HTTPError(f"{status} error", response=response)
 
 
 def connector_with(backend: FakeBackend, interaction: ScriptedInteraction | None) -> WoobConnector:
@@ -163,6 +183,11 @@ def test_challenge_without_user_requires_interaction() -> None:
         (BrowserIncorrectPassword("bad"), ErrorCode.INVALID_CREDENTIALS),
         (ScrapingBlocked("waf"), ErrorCode.BLOCKED),
         (NotImplementedError(), ErrorCode.NOT_SUPPORTED),
+        (http_error(403), ErrorCode.BLOCKED),
+        (http_error(503), ErrorCode.SITE_UNAVAILABLE),
+        (requests.exceptions.ConnectionError("reset by peer"), ErrorCode.CONNECTION_FAILED),
+        (requests.exceptions.SSLError("UNEXPECTED_EOF_WHILE_READING"), ErrorCode.CONNECTION_FAILED),
+        (requests.exceptions.SSLError("[SSL: CERTIFICATE_VERIFY_FAILED]"), ErrorCode.INSECURE_CONNECTION),
         (KeyError("boom"), ErrorCode.UNEXPECTED),
     ],
 )
@@ -212,3 +237,53 @@ def test_login_and_password_are_required() -> None:
     assert prompt_from_value(ValueBackendPassword("login", masked=False)).required
     assert prompt_from_value(ValueBackendPassword("password")).required
     assert not prompt_from_value(Value("identity", required=False)).required
+
+
+class FakeBoursoBankBrowser:
+    """Polls like Woob's BoursoBank module: until success, giving up on a QR code."""
+
+    def __init__(self, *responses: dict[str, Any]) -> None:
+        self.responses = list(responses)
+        self.page: Any = None
+
+    def check_twofa_status(self, token: str | None = None) -> None:
+        self.page = SimpleNamespace(doc=self.responses.pop(0))
+
+    def handle_polling(self) -> None:
+        while True:
+            self.check_twofa_status()
+            if self.page.doc.get("success"):
+                return
+            if self.page.doc.get("qrcode"):
+                raise AuthMethodNotImplemented("La validation par QR code n'est pas encore prise en charge.")
+
+
+def test_boursobank_qr_code_is_shown_and_polling_goes_on() -> None:
+    backend = SimpleNamespace(BROWSER=FakeBoursoBankBrowser)
+    interaction = ScriptedInteraction()
+    woob_fixes.apply("boursorama", backend, interaction)  # type: ignore[arg-type]
+
+    backend.BROWSER(
+        {"success": False}, {"qrcode": "code-1"}, {"qrcode": "code-2"}, {"success": True}
+    ).handle_polling()
+
+    assert interaction.qr_codes == ["code-1", "code-2", None]
+
+
+@pytest.mark.skipif(not paths.woob_modules_dir().is_dir(), reason="Woob modules not installed")
+def test_unused_boursobank_identity_is_not_asked() -> None:
+    assert "identity" not in [prompt.key for prompt in config_prompts("boursorama")]
+
+
+@pytest.mark.skipif(not paths.woob_modules_dir().is_dir(), reason="Woob modules not installed")
+def test_bank_modules_include_major_banks() -> None:
+    modules = {module["module"] for module in bank_modules()}
+    assert {
+        "boursorama",
+        "bnp",
+        "societegenerale",
+        "creditmutuel",
+        "caissedepargne",
+        "banquepopulaire",
+    } <= modules
+    assert "linebourse" not in modules  # a building block of other modules, without settings

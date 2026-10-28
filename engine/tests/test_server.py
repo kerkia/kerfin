@@ -11,7 +11,9 @@ from typing import Any
 
 import pytest
 
+from kerfin_engine import paths
 from kerfin_engine import vault as vault_module
+from kerfin_engine.connectors import demo
 from kerfin_engine.server import App, Server
 
 TOKEN = "t" * 32
@@ -126,3 +128,26 @@ def test_auto_lock_after_idle(api: Any) -> None:
     app.last_activity -= 16 * 60
     app.lock_if_idle()
     assert api("GET", "/api/status")["vault"] == "locked"
+
+
+def test_qr_code_is_shown_while_the_job_runs(api: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(demo, "QR_SECONDS", 1)
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    created = api(
+        "POST", "/api/connections", {"institution": "demo", "values": {"login": "me", "password": "qr"}}
+    )
+    deadline = time.monotonic() + 5
+    while not (job := api("GET", f"/api/jobs/{created['job']['id']}"))["qr_code"]:
+        assert time.monotonic() < deadline, job
+        time.sleep(0.05)
+    assert job["state"] == "running"
+    done = wait_for(api, job["id"], "done", "failed")
+    assert done["accounts_found"] == 5 and done["qr_code"] is None
+
+
+def test_institutions_include_woob_modules(api: Any) -> None:
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    ids = {i["id"] for i in api("GET", "/api/institutions")}
+    assert {"boursobank", "demo", "luxavie"} <= ids
+    if paths.woob_modules_dir().is_dir():
+        assert {"bnp", "fortuneo", "suravenir"} <= ids and "boursorama" not in ids
