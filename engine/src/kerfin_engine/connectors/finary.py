@@ -282,7 +282,7 @@ def shape(value: Any, depth: int = 0) -> Any:
         samples: dict[str, Any] = {}
         for item in value:
             kind = item.get("type") if isinstance(item, Mapping) else None
-            kind = kind if isinstance(kind, str) and re.fullmatch(r"[a-z_]{1,40}", kind) else ""
+            kind = kind if isinstance(kind, str) and re.fullmatch(r"[A-Za-z_]{1,40}", kind) else ""
             samples.setdefault(kind, item)
         return [f"{len(value)} items", *(shape(item, depth + 1) for item in list(samples.values())[:5])]
     return type(value).__name__
@@ -290,15 +290,17 @@ def shape(value: Any, depth: int = 0) -> Any:
 
 def _flat(item: Mapping[str, Any]) -> Mapping[str, Any]:
     """A JSON:API resource as one flat object: its `attributes`, its id and type as
-    `resource_type`, and each relationship as `<name>_id`."""
+    `resource_type`, and each relationship as `<name>_id` and `<name>_ref`, the (type, id)
+    of the linked resource in `included`."""
     attributes = item.get("attributes")
-    if not isinstance(attributes, Mapping):
+    if not isinstance(attributes, Mapping) and not isinstance(item.get("relationships"), Mapping):
         return item
-    flat = {**attributes, "id": item.get("id"), "resource_type": item.get("type")}
+    flat = {**(attributes or {}), "id": item.get("id"), "resource_type": item.get("type")}
     for name, relationship in (item.get("relationships") or {}).items():
         data = relationship.get("data") if isinstance(relationship, Mapping) else None
         if isinstance(data, Mapping):
             flat[f"{name}_id"] = data.get("id")
+            flat[f"{name}_ref"] = (str(data.get("type")), str(data.get("id")))
     return flat
 
 
@@ -390,7 +392,7 @@ _KINDS: tuple[tuple[str, AccountKind], ...] = (
     (r"card|carte", AccountKind.CARD),
     (r"\bpea\b|pea[_ -]?pme", AccountKind.PEA),
     (r"\bper\b|perco|perp|madelin|retire|pension|retraite", AccountKind.RETIREMENT),
-    (r"life|assurance|insurance|capitali", AccountKind.LIFE_INSURANCE),
+    (r"life|assurance|insur|capitali", AccountKind.LIFE_INSURANCE),
     (r"crypto|wallet|bitcoin|exchange", AccountKind.CRYPTO),
     (r"crowd", AccountKind.CROWDFUNDING),
     (r"real[_ ]?estate|scpi|immo|property|propert", AccountKind.REAL_ESTATE),
@@ -409,16 +411,22 @@ def account_kind(*descriptions: str | None) -> AccountKind:
     return AccountKind.OTHER
 
 
-def _institution(item: Mapping[str, Any], included: dict[tuple[str, str], Mapping[str, Any]]) -> str | None:
-    """The account's institution: a field of its own, or through Finary's JSON:API links
-    (account -> institution_connection -> institution)."""
-    named = _name(_pick(item, _INSTITUTION_KEYS))
-    if named:
-        return named
-    connection = included.get(("institution_connection", str(item.get("institution_connection_id"))), {})
-    institution_id = connection.get("institution_id") or item.get("institution_id")
-    institution = included.get(("institution", str(institution_id)), {})
-    return _name(_pick(institution, _LABEL_KEYS)) or _name(_pick(connection, _LABEL_KEYS))
+def _institution(
+    item: Mapping[str, Any], included: dict[tuple[str, str], Mapping[str, Any]]
+) -> Mapping[str, Any]:
+    """The account's institution resource, through Finary's JSON:API links (account ->
+    institution connection -> institution), followed by the types the links themselves give."""
+    connection = included.get(item.get("institution_connection_ref"), {})  # type: ignore[arg-type]
+    return included.get(connection.get("institution_ref") or item.get("institution_ref"), {})  # type: ignore[arg-type]
+
+
+# Institution kinds that say what an account holds, when its own type is just "investment".
+_PRODUCT_KINDS = {
+    AccountKind.LIFE_INSURANCE,
+    AccountKind.CRYPTO,
+    AccountKind.CROWDFUNDING,
+    AccountKind.REAL_ESTATE,
+}
 
 
 def accounts_from(payload: Any) -> list[Account]:
@@ -436,16 +444,23 @@ def accounts_from(payload: Any) -> list[Account]:
         label = _name(_pick(item, _LABEL_KEYS))
         if identifier is None and label is None:
             continue
-        kind_text = [_name(item.get(key)) for key in _TYPE_KEYS]
+        type_text = [_name(item.get(key)) for key in _TYPE_KEYS]
+        institution = _institution(item, included)
+        # The name often says more than the type ("PEA", "Assurance vie..."); Finary types
+        # many accounts as just "investment".
+        kind = account_kind(label, *type_text)
+        if kind in (AccountKind.OTHER, AccountKind.SECURITIES):
+            from_institution = account_kind(_name(institution.get("kind")))
+            kind = from_institution if from_institution in _PRODUCT_KINDS else kind
         found.append(
             Account(
                 external_id=str(identifier if identifier is not None else label),
                 label=label or str(identifier),
-                kind=account_kind(*kind_text),
+                kind=kind,
                 balance=balance,
                 currency=currency or "EUR",
-                subtype=next((text for text in kind_text if text), None),
-                institution=_institution(item, included),
+                subtype=next((text for text in type_text if text), None),
+                institution=_name(_pick(item, _INSTITUTION_KEYS)) or _name(_pick(institution, _LABEL_KEYS)),
             )
         )
     return found
@@ -505,7 +520,14 @@ class FinaryConnector:
             self.updated_secrets = {**secrets, REFRESH_TOKEN: tokens["refresh_token"]}
         self._mcp = McpClient(tokens["access_token"])
         self._mcp.start()
-        log.info("Finary tools: %s", ", ".join(sorted(self._mcp.tools)))
+        # Parameter names only: they say how to ask for holdings and other details.
+        log.info(
+            "Finary tools: %s",
+            {
+                name: sorted((tool.get("inputSchema") or {}).get("properties") or {})
+                for name, tool in sorted(self._mcp.tools.items())
+            },
+        )
         self._holdings: dict[str | None, list[Holding]] | None = None
 
     def accounts(self) -> list[Account]:
@@ -514,6 +536,12 @@ class FinaryConnector:
         found = accounts_from(payload)
         # Category names, not personal data: they tune the account kinds.
         log.info("Finary account types: %s", sorted({str(a.subtype) for a in found}))
+        log.info("Finary account kinds: %s", sorted({str(a.kind) for a in found}))
+        log.info(
+            "Finary included types and institution kinds: %s, %s",
+            sorted({ref[0] for ref in _included(payload)}),
+            sorted({str(i.get("kind")) for i in _included(payload).values() if "kind" in i}),
+        )
         log.info(
             "Finary institutions found for %s of %s accounts",
             sum(bool(a.institution) for a in found),
@@ -524,18 +552,42 @@ class FinaryConnector:
                 ErrorCode.UNEXPECTED,
                 f"Finary's account list has an unknown layout: {json.dumps(shape(payload))}",
             )
+        self._log_overview()
         return found
 
+    def _log_overview(self) -> None:
+        """The structure of Finary's portfolio overview (gains, variations...), to read it next."""
+        tool = self._mcp.tools.get("get_portfolio_overview")
+        if tool is None or (tool.get("inputSchema") or {}).get("required"):
+            return
+        try:
+            log.info(
+                "Finary overview answer: %s", json.dumps(shape(self._mcp.call("get_portfolio_overview")))
+            )
+        except ConnectorError as error:
+            log.info("Finary overview unavailable: %s", error.code)
+
     def holdings(self, account_id: str) -> list[Holding]:
-        if self._holdings is None:
-            self._holdings = {}
-            if "holdings" in self._mcp.tools and not self._mcp.tools["holdings"].get("inputSchema", {}).get(
-                "required"
-            ):
+        tool = self._mcp.tools.get("holdings")
+        if tool is None:
+            return []
+        required = (tool.get("inputSchema") or {}).get("required") or []
+        if not required:
+            if self._holdings is None:
                 payload = self._mcp.call("holdings")
                 log.info("Finary holdings answer: %s", json.dumps(shape(payload)))
                 self._holdings = holdings_from(payload)
-        return self._holdings.get(account_id, [])
+            return self._holdings.get(account_id, [])
+        if len(required) == 1 and "account" in required[0]:
+            # One account at a time: its holdings may not repeat the account's id.
+            payload = self._mcp.call("holdings", {required[0]: account_id})
+            if self._holdings is None:
+                log.info("Finary holdings answer: %s", json.dumps(shape(payload)))
+                self._holdings = {}
+            found = holdings_from(payload)
+            return found.get(account_id) or found.get(None) or [h for hs in found.values() for h in hs]
+        log.info("Finary holdings needs %s: not read yet", required)
+        return []
 
     def transactions(self, account_id: str, limit: int | None = None) -> list[Transaction]:
         return []  # balances and holdings first; transactions need Finary's Budget feature

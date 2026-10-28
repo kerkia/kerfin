@@ -31,7 +31,7 @@ def _account(account_id: str, name: str, account_type: str, owned_eur: str, conn
         },
         "relationships": {
             "institution_connection": {
-                "data": {"type": "institution_connection", "id": connection} if connection else None
+                "data": {"type": "institutionConnection", "id": connection} if connection else None
             }
         },
     }
@@ -42,24 +42,32 @@ FINARY_ACCOUNTS = {
     "_reading_note": "Amounts are strings in the account currency.",
     "data": [
         _account("acc-1", "Livret A", "savings", "11475.25", "conn-1"),
-        _account("acc-2", "Linxea Spirit 2", "life_insurance", "24105.18", "conn-2"),
+        _account("acc-2", "Linxea Spirit 2", "investment", "24105.18", "conn-2"),
         _account("acc-3", "Bitpanda", "crypto", "600", None),
     ],
     "included": [
         {
             "id": "conn-1",
-            "type": "institution_connection",
+            "type": "institutionConnection",
             "attributes": {"sync_status": "synced"},
-            "relationships": {"institution": {"data": {"type": "institution", "id": "inst-1"}}},
+            "relationships": {"institution": {"data": {"type": "financialInstitution", "id": "inst-1"}}},
         },
         {
             "id": "conn-2",
-            "type": "institution_connection",
+            "type": "institutionConnection",
             "attributes": {"sync_status": "synced"},
-            "relationships": {"institution": {"data": {"type": "institution", "id": "inst-2"}}},
+            "relationships": {"institution": {"data": {"type": "financialInstitution", "id": "inst-2"}}},
         },
-        {"id": "inst-1", "type": "institution", "attributes": {"name": "BoursoBank"}},
-        {"id": "inst-2", "type": "institution", "attributes": {"name": "Spirica"}},
+        {
+            "id": "inst-1",
+            "type": "financialInstitution",
+            "attributes": {"name": "BoursoBank", "slug": "boursobank", "kind": "bank"},
+        },
+        {
+            "id": "inst-2",
+            "type": "financialInstitution",
+            "attributes": {"name": "Spirica", "slug": "spirica", "kind": "insurer"},
+        },
     ],
 }
 

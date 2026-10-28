@@ -25,7 +25,7 @@ def test_finary_accounts_are_read_with_owned_value_and_institution() -> None:
     assert (spirit.kind, spirit.institution, spirit.subtype) == (
         AccountKind.LIFE_INSURANCE,
         "Spirica",
-        "life_insurance",
+        "investment",  # Finary's type; the insurer says what it is
     )
     assert crypto.kind is AccountKind.CRYPTO and crypto.institution is None
 
@@ -135,3 +135,37 @@ def test_unknown_layout_reports_its_structure(
         finary.FinaryConnector(secrets).accounts()
     assert error.value.code is ErrorCode.UNEXPECTED
     assert '{"summary": {"net": "float"}}' in error.value.detail and "99.5" not in error.value.detail
+
+
+@pytest.mark.parametrize(
+    ("name", "institution_kind", "kind"),
+    [
+        ("PEA Bourse", "bank", AccountKind.PEA),
+        ("Compte-titres", "bank", AccountKind.SECURITIES),
+        ("Linxea Avenir", "insurer", AccountKind.LIFE_INSURANCE),
+        ("Mon PER", "insurer", AccountKind.RETIREMENT),
+    ],
+)
+def test_investment_accounts_get_their_kind_from_name_or_institution(
+    name: str, institution_kind: str, kind: AccountKind
+) -> None:
+    payload = {
+        "data": [
+            {
+                "id": "a",
+                "type": "account",
+                "attributes": {"name": name, "account_type": "investment", "balance": "1"},
+                "relationships": {"institution_connection": {"data": {"type": "conn", "id": "c"}}},
+            }
+        ],
+        "included": [
+            {
+                "id": "c",
+                "type": "conn",
+                "relationships": {"institution": {"data": {"type": "inst", "id": "i"}}},
+            },
+            {"id": "i", "type": "inst", "attributes": {"name": "X", "kind": institution_kind}},
+        ],
+    }
+    [account] = finary.accounts_from(payload)
+    assert account.kind is kind and account.institution == "X"
