@@ -1,5 +1,5 @@
 // Every counted account with its share, value and change over the selected range.
-import { accountHistory, amount, changeSince } from "@kerfin/core";
+import { accountHistory, accountInsurer, amount, changeSince } from "@kerfin/core";
 import type { Account, AccountKind, BalancePoint, Change } from "@kerfin/core";
 import { useMemo, useState } from "react";
 
@@ -8,6 +8,7 @@ import { kindLabel, money, percent, signedMoney, t } from "../i18n";
 interface Row {
   account: Account;
   institution: string;
+  insurer: string | null;
   value: number;
   share: number;
   change: Change | null;
@@ -31,6 +32,7 @@ export function AssetsTable({
   const [side, setSide] = useState<"assets" | "liabilities">("assets");
   const [kind, setKind] = useState<string>("");
   const [institution, setInstitution] = useState<string>("");
+  const [insurer, setInsurer] = useState<string>("");
   const [query, setQuery] = useState("");
   const [grouped, setGrouped] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "value", descending: true });
@@ -42,6 +44,7 @@ export function AssetsTable({
     return onSide.map((account) => ({
       account,
       institution: institutionOf(account),
+      insurer: accountInsurer(account),
       value: amount(account.balance),
       share: Math.abs(amount(account.balance)) / total,
       change: changeSince(accountHistory(history, account.id), start),
@@ -50,10 +53,12 @@ export function AssetsTable({
 
   const kinds = [...new Set(rows.map((r) => r.account.kind))].sort();
   const institutions = [...new Set(rows.map((r) => r.institution))].sort((a, b) => a.localeCompare(b));
+  const insurers = [...new Set(rows.map((r) => r.insurer).filter((i): i is string => !!i))].sort();
   const q = query.trim().toLowerCase();
   const shown = rows
     .filter((r) => (!kind || r.account.kind === kind) && (!institution || r.institution === institution))
-    .filter((r) => !q || `${r.account.label} ${r.institution}`.toLowerCase().includes(q))
+    .filter((r) => !insurer || r.insurer === insurer)
+    .filter((r) => !q || `${r.account.label} ${r.institution} ${r.insurer ?? ""}`.toLowerCase().includes(q))
     .sort((a, b) => compare(a, b, sort.key) * (sort.descending ? -1 : 1));
 
   const groups: [string | null, Row[]][] = grouped
@@ -122,6 +127,16 @@ export function AssetsTable({
             </option>
           ))}
         </select>
+        {insurers.length > 0 && (
+          <select className="input compact" aria-label={t("portfolio.insurer")} value={insurer} onChange={(e) => setInsurer(e.target.value)}>
+            <option value="">{t("portfolio.allInsurers")}</option>
+            {insurers.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
         <label className="checkbox toggle">
           <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />
           <span>{t("portfolio.groupByType")}</span>
@@ -189,7 +204,10 @@ function GroupRows({ group, rows, onSelect }: { group: string | null; rows: Row[
         <tr key={row.account.id} className="clickable" onClick={() => onSelect(row.account)}>
           <td>
             <div>{row.account.label}</div>
-            <div className="muted small">{row.institution}</div>
+            <div className="muted small">
+              {row.institution}
+              {row.insurer && row.insurer !== row.institution ? ` · ${row.insurer}` : ""}
+            </div>
           </td>
           <td>
             <span className="tag">{kindLabel(row.account.kind)}</span>

@@ -16,6 +16,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
+from kerfin_engine import insurers
 from kerfin_engine.domain import Account, AccountKind, Holding, Transaction
 
 SCHEMA = """
@@ -48,6 +49,8 @@ CREATE TABLE accounts (
     opening_date TEXT,
     updated_at TEXT NOT NULL,
     hidden INTEGER NOT NULL DEFAULT 0,
+    kind_override TEXT,            -- the user's choice, kept across syncs
+    insurer TEXT,                  -- life insurance and PER: set by the user
     UNIQUE (connection_id, external_id)
 );
 CREATE TABLE holdings (
@@ -78,7 +81,15 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# Steps from each older schema version to the next.
+MIGRATIONS = {
+    1: (
+        "ALTER TABLE accounts ADD COLUMN kind_override TEXT",
+        "ALTER TABLE accounts ADD COLUMN insurer TEXT",
+    ),
+}
 
 
 def _now() -> str:
@@ -116,6 +127,11 @@ class Store:
         version = store._db.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise ValueError("This data was written by a newer Kerfin; update the app")
+        with store.transaction() as db:
+            for step in range(version, SCHEMA_VERSION):
+                for statement in MIGRATIONS[step]:
+                    db.execute(statement)
+            db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         return store
 
     def dump(self) -> bytes:
@@ -327,13 +343,31 @@ class Store:
             )
 
     def update_account(
-        self, account_id: str, *, label: str | None = None, hidden: bool | None = None
+        self,
+        account_id: str,
+        *,
+        label: str | None = None,
+        hidden: bool | None = None,
+        kind: AccountKind | None = None,
+        reset_kind: bool = False,
+        insurer: str | None = None,
     ) -> None:
+        """Changes what the user controls. An empty `insurer` clears it; `reset_kind` goes
+        back to the detected kind."""
         with self.transaction() as db:
             if label is not None:
                 db.execute("UPDATE accounts SET label = ? WHERE id = ?", (label, account_id))
             if hidden is not None:
                 db.execute("UPDATE accounts SET hidden = ? WHERE id = ?", (int(hidden), account_id))
+            if kind is not None or reset_kind:
+                db.execute(
+                    "UPDATE accounts SET kind_override = ? WHERE id = ?",
+                    (None if reset_kind else str(kind), account_id),
+                )
+            if insurer is not None:
+                db.execute(
+                    "UPDATE accounts SET insurer = ? WHERE id = ?", (insurer.strip() or None, account_id)
+                )
 
     def delete_manual_account(self, account_id: str) -> None:
         with self.transaction() as db:
@@ -341,12 +375,17 @@ class Store:
 
     def accounts(self) -> list[dict[str, Any]]:
         rows = self._rows(
-            "SELECT a.id, a.connection_id, c.institution, a.institution_name, a.label, a.kind, a.subtype,"
-            " a.number, a.currency, a.balance, a.opening_date, a.updated_at, a.hidden"
+            "SELECT a.id, a.connection_id, c.institution, a.institution_name, a.label,"
+            " COALESCE(a.kind_override, a.kind) AS kind, a.kind AS kind_detected,"
+            " a.kind_override IS NOT NULL AS kind_set, a.insurer, a.subtype, a.number, a.currency,"
+            " a.balance, a.opening_date, a.updated_at, a.hidden"
             " FROM accounts a LEFT JOIN connections c ON c.id = a.connection_id ORDER BY a.label"
         )
         for row in rows:
             row["hidden"] = bool(row["hidden"])
+            row["kind_set"] = bool(row["kind_set"])
+            # A suggestion from the contract's name until the user sets the insurer.
+            row["insurer_suggested"] = None if row["insurer"] else insurers.suggest(row["label"])
         return rows
 
     def holdings(self, account_id: str) -> list[dict[str, Any]]:

@@ -1,10 +1,10 @@
-import { amount } from "@kerfin/core";
-import type { Account, Holding, Transaction } from "@kerfin/core";
+import { INSURED_KINDS, accountInsurer, amount } from "@kerfin/core";
+import type { Account, AccountKind, Holding, Transaction } from "@kerfin/core";
 import { useEffect, useState } from "react";
 
 import { useData } from "../data";
 import { engine } from "../engine";
-import { ago, kindLabel, longDate, money, t } from "../i18n";
+import { KIND_OPTIONS, ago, kindLabel, longDate, money, t } from "../i18n";
 import { Dialog } from "./ui";
 
 export function AccountDetail({ account, onClose }: { account: Account | null; onClose: () => void }) {
@@ -21,6 +21,8 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
   const [label, setLabel] = useState(account.label);
   const [hidden, setHidden] = useState(account.hidden);
   const [balance, setBalance] = useState(account.balance ?? "");
+  const [kind, setKind] = useState<AccountKind>(account.kind);
+  const [insurer, setInsurer] = useState(account.insurer ?? "");
   const manual = !account.connection_id;
   const currency = account.currency ?? "EUR";
 
@@ -33,6 +35,9 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
     await engine.updateAccount(account.id, {
       label: label.trim() || account.label,
       hidden,
+      // Picking the detected kind again goes back to following the source.
+      ...(kind !== account.kind ? { kind: kind === account.kind_detected ? "auto" : kind } : {}),
+      ...(insurer.trim() !== (account.insurer ?? "") ? { insurer: insurer.trim() } : {}),
       ...(manual && number !== account.balance && Number.isFinite(Number(number)) ? { balance: number } : {}),
     });
     await refresh();
@@ -53,6 +58,7 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
           <h2>{account.label}</h2>
           <div className="muted small">
             {accountInstitution(account)} · {kindLabel(account.kind)}
+            {accountInsurer(account) ? ` · ${t("detail.insuredBy", { insurer: accountInsurer(account)! })}` : ""}
             {account.number ? ` · ${account.number}` : ""} · {t("detail.updated", { when: ago(account.updated_at) })}
           </div>
         </div>
@@ -131,6 +137,34 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
                 value={balance}
                 onChange={(e) => setBalance(e.target.value)}
               />
+            </div>
+          )}
+        </div>
+        <div className="row" style={{ alignItems: "flex-start" }}>
+          <div className="field" style={{ flex: 1 }}>
+            <label htmlFor="d-kind">{t("detail.kind")}</label>
+            <select id="d-kind" className="input" value={kind} onChange={(e) => setKind(e.target.value as AccountKind)}>
+              {KIND_OPTIONS.map((k) => (
+                <option key={k} value={k}>
+                  {kindLabel(k)}
+                  {!manual && k === account.kind_detected ? ` ${t("detail.detected")}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          {INSURED_KINDS.has(kind) && (
+            <div className="field" style={{ flex: 1 }}>
+              <label htmlFor="d-insurer">{t("detail.insurer")}</label>
+              <input
+                id="d-insurer"
+                className="input"
+                value={insurer}
+                placeholder={account.insurer_suggested ?? t("detail.insurerUnknown")}
+                onChange={(e) => setInsurer(e.target.value)}
+              />
+              {!account.insurer && account.insurer_suggested && (
+                <span className="muted small">{t("detail.insurerSuggested", { insurer: account.insurer_suggested })}</span>
+              )}
             </div>
           )}
         </div>

@@ -100,3 +100,41 @@ def test_manual_account_balance_updates() -> None:
     [account] = store.accounts()
     assert account["balance"] == "7.5" and account["institution_name"] == "Baloise"
     assert store.balance_history()[-1]["balance"] == "7.5"
+
+
+def test_chosen_kind_and_insurer_survive_syncs() -> None:
+    store = Store.create()
+    connection_id = store.add_connection("finary", "Finary", {}, {}, remember=True)
+    _sync(store, connection_id, "1000.00", date(2026, 1, 1))
+    [account] = store.accounts()
+    store.update_account(account["id"], kind=AccountKind.PEA, insurer="  ")
+    store.update_account(account["id"], insurer="Spirica")
+    _sync(store, connection_id, "1100.00", date(2026, 1, 2))
+
+    [account] = Store.load(store.dump()).accounts()
+    assert (account["kind"], account["kind_set"], account["insurer"]) == ("pea", True, "Spirica")
+    store.update_account(account["id"], reset_kind=True, insurer="")
+    [account] = store.accounts()
+    assert (
+        account["kind"] == account["kind_detected"] and not account["kind_set"] and account["insurer"] is None
+    )
+
+
+def test_insurer_is_suggested_from_the_contract_name() -> None:
+    store = Store.create()
+    store.add_manual_account("LinXea", "Linxea Spirit 2", AccountKind.LIFE_INSURANCE, Decimal("5"), "EUR")
+    [account] = store.accounts()
+    assert account["insurer_suggested"] == "Spirica"
+
+
+def test_older_vaults_are_migrated() -> None:
+    store = Store.create()
+    for column in ("kind_override", "insurer"):
+        store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
+    store._db.execute("PRAGMA user_version = 1")
+    store.add_manual_account("Baloise", "Luxavie", AccountKind.LIFE_INSURANCE, Decimal("5"), "EUR")
+
+    migrated = Store.load(store.dump())
+    [account] = migrated.accounts()
+    assert account["insurer"] is None and not account["kind_set"]
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 2

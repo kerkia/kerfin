@@ -208,3 +208,17 @@ def test_holdings_take_isin_and_price_from_the_linked_security() -> None:
         Decimal("1520.40"),
         Decimal("98.12"),
     )
+
+
+def test_known_insurance_contracts_are_life_insurance() -> None:
+    payload = {
+        "data": [
+            {
+                "id": "a",
+                "type": "account",
+                "attributes": {"name": "Linxea Spirit 2", "account_type": "investment", "balance": "1"},
+            }
+        ]
+    }
+    [account] = finary.accounts_from(payload)
+    assert account.kind is AccountKind.LIFE_INSURANCE

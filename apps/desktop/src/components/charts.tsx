@@ -182,7 +182,13 @@ export function donutSlices(items: { key: string; label: string; value: number }
   const total = positive.reduce((sum, item) => sum + item.value, 0) || 1;
   const kept = positive.length > MAX_SLICES ? positive.slice(0, MAX_SLICES - 1) : positive;
   const rest = positive.slice(kept.length);
-  const slices = kept.map((item, i) => ({ ...item, share: item.value / total, color: `var(--series-${i + 1})` }));
+  // Keys starting with "__" (e.g. "insurer not set") are not entities: grey, like "Other".
+  let slot = 0;
+  const slices = kept.map((item) => ({
+    ...item,
+    share: item.value / total,
+    color: item.key.startsWith("__") ? "var(--series-other)" : `var(--series-${++slot})`,
+  }));
   if (rest.length) {
     const value = rest.reduce((sum, item) => sum + item.value, 0);
     slices.push({ key: "__other", label: otherLabel, value, share: value / total, color: "var(--series-other)" });

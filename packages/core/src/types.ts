@@ -24,7 +24,11 @@ export interface Account {
   institution: string | null; // institution id, for connected accounts
   institution_name: string | null; // free text, for manual accounts
   label: string;
-  kind: AccountKind;
+  kind: AccountKind; // the user's choice if any, else what the source says
+  kind_detected: AccountKind;
+  kind_set: boolean;
+  insurer: string | null; // life insurance and PER: set by the user
+  insurer_suggested: string | null; // known from the contract's name, until the user sets one
   subtype: string | null;
   number: string | null;
   currency: string | null;

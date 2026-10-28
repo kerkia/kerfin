@@ -461,10 +461,20 @@ def update_account(app: App, match: re.Match[str], body: dict[str, Any]) -> Any:
         except KeyError:
             raise ApiError(HTTPStatus.NOT_FOUND, "unknown_manual_account") from None
     hidden = body.get("hidden")
+    # "kind": an account kind the user picked, or "auto" to go back to the detected one.
+    kind = _str(body, "kind") if "kind" in body else None
+    try:
+        chosen = AccountKind(kind) if kind not in (None, "auto") else None
+    except ValueError:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "kind") from None
+    insurer = body.get("insurer")
     store.update_account(
         match["id"],
         label=_str(body, "label") if "label" in body else None,
         hidden=hidden if isinstance(hidden, bool) else None,
+        kind=chosen,
+        reset_kind=kind == "auto",
+        insurer=insurer if isinstance(insurer, str) else None,
     )
     app.persist()
     return {}

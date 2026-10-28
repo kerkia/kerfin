@@ -114,7 +114,10 @@ export const engine = {
   }) => call<{ id: string }>("POST", "/api/accounts", account),
   accountDetail: (id: string) =>
     call<{ holdings: Holding[]; transactions: Transaction[] }>("GET", `/api/accounts/${id}`),
-  updateAccount: (id: string, changes: { label?: string; hidden?: boolean; balance?: string }) =>
+  updateAccount: (
+    id: string,
+    changes: { label?: string; hidden?: boolean; balance?: string; kind?: string; insurer?: string },
+  ) =>
     call<object>("PATCH", `/api/accounts/${id}`, changes),
   deleteAccount: (id: string) => call<object>("DELETE", `/api/accounts/${id}`),
 

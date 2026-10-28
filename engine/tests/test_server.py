@@ -192,3 +192,19 @@ def test_finary_callback_needs_the_sign_in_state(api: Any) -> None:
     with pytest.raises(urllib.error.HTTPError) as error:
         urllib.request.urlopen(f"http://127.0.0.1:{port}/finary/callback?code=x&state=forged")
     assert error.value.code == 400
+
+
+def test_account_kind_and_insurer_can_be_set(api: Any) -> None:
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    body = {"institution_name": "LinXea", "label": "Linxea Avenir", "kind": "securities", "balance": "10"}
+    account_id = api("POST", "/api/accounts", body)["id"]
+    api("PATCH", f"/api/accounts/{account_id}", {"kind": "life_insurance", "insurer": "Suravenir"})
+    [account] = api("GET", "/api/overview")["accounts"]
+    assert (account["kind"], account["insurer"], account["insurer_suggested"]) == (
+        "life_insurance",
+        "Suravenir",
+        None,
+    )
+    assert api("PATCH", f"/api/accounts/{account_id}", {"kind": "bogus"})["status"] == 400
+    api("PATCH", f"/api/accounts/{account_id}", {"kind": "auto"})
+    assert api("GET", "/api/overview")["accounts"][0]["kind"] == "securities"

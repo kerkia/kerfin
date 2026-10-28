@@ -215,3 +215,11 @@ export function portfolioChange(history: BalancePoint[], accounts: Account[], st
     partial: changes.some((c) => c.change.partial),
   };
 }
+
+/** Contracts held by an insurer: assurance-vie and PER. */
+export const INSURED_KINDS: ReadonlySet<AccountKind> = new Set(["life_insurance", "retirement"]);
+
+/** The insurer of an assurance-vie or PER: the user's, else the one known from its name. */
+export function accountInsurer(account: Account): string | null {
+  return INSURED_KINDS.has(account.kind) ? (account.insurer ?? account.insurer_suggested) : null;
+}

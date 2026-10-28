@@ -30,6 +30,7 @@ from urllib.parse import urlencode, urlsplit
 
 import requests
 
+from kerfin_engine import insurers
 from kerfin_engine.connectors.base import ConnectorError, ErrorCode, InteractionHandler
 from kerfin_engine.domain import Account, AccountKind, Holding, Transaction
 
@@ -453,6 +454,9 @@ def accounts_from(payload: Any) -> list[Account]:
         if kind in (AccountKind.OTHER, AccountKind.SECURITIES):
             from_institution = account_kind(_name(institution.get("kind")))
             kind = from_institution if from_institution in _PRODUCT_KINDS else kind
+        if kind in (AccountKind.OTHER, AccountKind.SECURITIES) and insurers.suggest(label):
+            # A known insurance contract ("Linxea Spirit 2"...): life insurance.
+            kind = AccountKind.LIFE_INSURANCE
         found.append(
             Account(
                 external_id=str(identifier if identifier is not None else label),

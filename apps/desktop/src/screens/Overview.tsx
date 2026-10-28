@@ -1,7 +1,9 @@
 // The portfolio at a glance: net worth and its change over a chosen period, how it is
 // split, and every account. The period picker scopes everything on the page.
 import {
+  INSURED_KINDS,
   RANGES,
+  accountInsurer,
   allocationByInstitution,
   allocationByKind,
   amount,
@@ -23,7 +25,17 @@ import { useMinuteTick } from "../components/Jobs";
 import { useData } from "../data";
 import { ago, errorText, kindLabel, longDate, money, t } from "../i18n";
 
-type Split = "account" | "kind" | "institution";
+type Split = "account" | "kind" | "institution" | "insurer";
+
+/** Assurance-vie and PER contracts by insurer. */
+function byInsurer(accounts: Account[], unknown: string) {
+  const totals = new Map<string, number>();
+  for (const account of accounts.filter((a) => INSURED_KINDS.has(a.kind))) {
+    const insurer = accountInsurer(account) ?? "__unset";
+    totals.set(insurer, (totals.get(insurer) ?? 0) + amount(account.balance));
+  }
+  return [...totals].map(([key, value]) => ({ key, label: key === "__unset" ? unknown : key, value }));
+}
 
 /** Today in local time, as the engine dates its snapshots. */
 function localToday(): string {
@@ -52,7 +64,9 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
   const { overview, accountInstitution, institutionName } = useData();
   const [adding, setAdding] = useState(false);
   const [range, setRange] = useState<Range>(() => remembered("kerfin.range", RANGES, "1M"));
-  const [split, setSplit] = useState<Split>(() => remembered("kerfin.split", ["account", "kind", "institution"] as const, "account"));
+  const [split, setSplit] = useState<Split>(() =>
+    remembered("kerfin.split", ["account", "kind", "institution", "insurer"] as const, "account"),
+  );
   const [active, setActive] = useState<string | null>(null);
   const [selected, setSelected] = useState<Account | null>(null);
   useMinuteTick();
@@ -65,7 +79,9 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
     const items =
       split === "account"
         ? counted.map((a) => ({ key: a.id, label: a.label, value: amount(a.balance) }))
-        : (split === "kind"
+        : split === "insurer"
+          ? byInsurer(counted, t("portfolio.unknownInsurer"))
+          : (split === "kind"
             ? allocationByKind(overview.accounts).map((s) => ({ ...s, label: kindLabel(s.key) }))
             : allocationByInstitution(overview.accounts, accountInstitution).map((s) => ({ ...s, label: s.key }))
           ).map(({ key, label, value }) => ({ key, label, value }));
@@ -76,6 +92,7 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
       // Each account's change, as in the table: an account added in the period isn't a gain.
       change: portfolioChange(overview.history, overview.accounts, start),
       slices: donutSlices(items, t("portfolio.other")),
+      sliced: items.reduce((sum, item) => sum + Math.max(item.value, 0), 0),
       lastUpdate: overview.accounts.map((a) => a.updated_at).sort().pop(),
     };
   }, [overview, accountInstitution, split, start]);
@@ -196,13 +213,14 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
               <option value="account">{t("portfolio.byAccount")}</option>
               <option value="kind">{t("portfolio.byType")}</option>
               <option value="institution">{t("portfolio.byInstitution")}</option>
+              <option value="insurer">{t("portfolio.byInsurer")}</option>
             </select>
           </div>
           <div className="allocation">
             <Donut
               slices={figures.slices}
-              total={whole(worth.assets)}
-              totalLabel={t("portfolio.total")}
+              total={whole(figures.sliced)}
+              totalLabel={split === "insurer" ? t("portfolio.insuredTotal") : t("portfolio.total")}
               active={active}
               onActive={setActive}
             />
