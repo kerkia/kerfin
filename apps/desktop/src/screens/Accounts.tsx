@@ -2,7 +2,7 @@ import { amount } from "@kerfin/core";
 import type { Account, Connection } from "@kerfin/core";
 import { useState } from "react";
 
-import { AccountDetail } from "../components/AccountDetail";
+import { AccountEditor } from "../components/AccountEditor";
 import { AddAccount, ConnectForm } from "../components/AddAccount";
 import { FinaryConnect } from "../components/FinaryConnect";
 import { useJobs, useMinuteTick } from "../components/Jobs";
@@ -16,7 +16,9 @@ export function Accounts() {
   const { track } = useJobs();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Connection | null>(null);
-  const [selected, setSelected] = useState<Account | null>(null);
+  // The account whose details are open, below it.
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (account: Account) => setOpen((id) => (id === account.id ? null : account.id));
   useMinuteTick();
 
   if (!overview) return null;
@@ -80,7 +82,9 @@ export function Accounts() {
           </div>
           <AccountRows
             accounts={overview.accounts.filter((a) => a.connection_id === connection.id)}
-            onSelect={setSelected}
+            open={open}
+            onToggle={toggle}
+            onClose={() => setOpen(null)}
           />
         </section>
       ))}
@@ -93,7 +97,7 @@ export function Accounts() {
               <span className="status">{t("accounts.manual")}</span>
             </div>
           </div>
-          <AccountRows accounts={accounts} onSelect={setSelected} />
+          <AccountRows accounts={accounts} open={open} onToggle={toggle} onClose={() => setOpen(null)} />
         </section>
       ))}
 
@@ -111,7 +115,6 @@ export function Accounts() {
           />
         )}
       </Dialog>
-      <AccountDetail account={selected} onClose={() => setSelected(null)} />
     </>
   );
 }
@@ -134,15 +137,26 @@ function ConnectionStatus({ connection }: { connection: Connection }) {
   return <span className="status ok">{t("accounts.syncedAgo", { when: ago(connection.last_sync_at) })}</span>;
 }
 
-function AccountRows({ accounts, onSelect }: { accounts: Account[]; onSelect: (a: Account) => void }) {
+function AccountRows({
+  accounts,
+  open,
+  onToggle,
+  onClose,
+}: {
+  accounts: Account[];
+  open: string | null;
+  onToggle: (a: Account) => void;
+  onClose: () => void;
+}) {
   if (accounts.length === 0) return <p className="muted" style={{ margin: 0 }}>{t("accounts.noAccounts")}</p>;
   return (
     <div className="list">
       {accounts.map((account) => (
+        <div key={account.id} className={open === account.id ? "account-item open" : "account-item"}>
         <button
-          key={account.id}
           className={account.hidden ? "list-row dimmed" : "list-row"}
-          onClick={() => onSelect(account)}
+          aria-expanded={open === account.id}
+          onClick={() => onToggle(account)}
         >
           <span>
             <div>{account.label}</div>
@@ -156,6 +170,8 @@ function AccountRows({ accounts, onSelect }: { accounts: Account[]; onSelect: (a
             {account.balance == null ? "–" : money(amount(account.balance), account.currency ?? "EUR")}
           </span>
         </button>
+        {open === account.id && <AccountEditor key={account.id} account={account} onClose={onClose} />}
+        </div>
       ))}
     </div>
   );

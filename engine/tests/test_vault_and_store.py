@@ -143,4 +143,16 @@ def test_older_vaults_are_migrated() -> None:
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
     assert migrated.holdings() == [] and migrated.market()["prices"] == {}
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 4
+
+
+def test_stray_card_choices_are_cleared() -> None:
+    store = Store.create()
+    connection_id = store.add_connection("finary", "Finary", {}, {}, remember=True)
+    _sync(store, connection_id, "1000.00", date(2026, 1, 1))
+    [account] = store.accounts()
+    store.update_account(account["id"], kind=AccountKind.CARD)
+    store._db.execute("PRAGMA user_version = 3")
+
+    [account] = Store.load(store.dump()).accounts()
+    assert account["kind"] == account["kind_detected"] != "card" and not account["kind_set"]

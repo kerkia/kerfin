@@ -12,13 +12,14 @@ import {
   rangeStart,
   returns,
 } from "@kerfin/core";
-import type { Account, AssetClass, Breakdown, Market, Range } from "@kerfin/core";
-import { useEffect, useMemo, useState } from "react";
+import type { Account, AccountKind, AssetClass, Breakdown, Market, Range } from "@kerfin/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { BarList, Donut, DonutLegend, LineChart, donutSlices } from "../components/charts";
+import { MultiSelect } from "../components/MultiSelect";
 import { useData } from "../data";
 import { engine } from "../engine";
-import { money, percent, t } from "../i18n";
+import { kindLabel, money, percent, t } from "../i18n";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF"] as const;
 const TOP_COUNTRIES = 9;
@@ -51,6 +52,9 @@ export function InvestmentsPage() {
   const [range, setRange] = useState<Range>(() => stored("kerfin.invRange", PERFORMANCE_RANGES, "1Y"));
   const [currency, setCurrency] = useState<string>(() => stored("kerfin.currency", CURRENCIES, "EUR"));
   const [active, setActive] = useState<string | null>(null);
+  // Filters: no choice means everything.
+  const [types, setTypes] = useState<Set<string>>(new Set());
+  const [accountIds, setAccountIds] = useState<Set<string>>(new Set());
 
   // Reload after each sync: the overview changes then.
   useEffect(() => {
@@ -58,12 +62,28 @@ export function InvestmentsPage() {
   }, [overview]);
 
   const start = rangeStart(range, localToday());
+  const kindOf = useMemo(
+    () => new Map((overview?.accounts ?? []).map((a): [string, AccountKind] => [a.id, a.kind])),
+    [overview],
+  );
+  const scope = useCallback(
+    (all: Market): Market => ({
+      ...all,
+      holdings: all.holdings.filter(
+        (h) =>
+          (types.size === 0 || types.has(kindOf.get(h.account_id) ?? "")) &&
+          (accountIds.size === 0 || accountIds.has(h.account_id)),
+      ),
+    }),
+    [types, accountIds, kindOf],
+  );
   const figures = useMemo(() => {
     if (!market) return null;
-    const { priced, unpricedValue } = pricedHoldings(market);
+    const scoped = scope(market);
+    const { priced, unpricedValue } = pricedHoldings(scoped);
     const pricedValue = priced.reduce((sum, p) => sum + amount(p.holding.valuation), 0);
-    const history = holdingsHistory(market, currency, start);
-    const classes = assetClasses(market);
+    const history = holdingsHistory(scoped, currency, start);
+    const classes = assetClasses(scoped);
     return {
       history,
       pricedShare: pricedValue / (pricedValue + unpricedValue || 1),
@@ -73,24 +93,24 @@ export function InvestmentsPage() {
         t("portfolio.other"),
       ),
       classesTotal: classes.reduce((sum, c) => sum + c.value, 0),
-      countries: breakdown(market, "countries"),
-      sectors: breakdown(market, "sectors"),
-      rows: market.holdings
+      countries: breakdown(scoped, "countries"),
+      sectors: breakdown(scoped, "sectors"),
+      rows: scoped.holdings
         .filter((h) => amount(h.valuation) > 0)
         .map((holding) => {
-          const security = holding.isin ? market.securities[holding.isin] : undefined;
+          const security = holding.isin ? scoped.securities[holding.isin] : undefined;
           const pricedHolding = priced.find((p) => p.holding === holding);
           return {
             holding,
             kind: assetClass(holding, security),
-            index: indexOf(holding, market.indices, security),
-            returns: pricedHolding ? returns(market, pricedHolding, currency, start) : null,
+            index: indexOf(holding, scoped.indices, security),
+            returns: pricedHolding ? returns(scoped, pricedHolding, currency, start) : null,
           };
         })
         .sort((a, b) => amount(b.holding.valuation) - amount(a.holding.valuation)),
-      indexDate: market.indices[0]?.as_of ?? "",
+      indexDate: scoped.indices[0]?.as_of ?? "",
     };
-  }, [market, currency, start]);
+  }, [market, currency, start, scope]);
 
   const accounts = new Map((overview?.accounts ?? []).map((a): [string, Account] => [a.id, a]));
   const holdingsTotal = figures ? figures.rows.reduce((sum, r) => sum + amount(r.holding.valuation), 0) : 0;
@@ -133,12 +153,42 @@ export function InvestmentsPage() {
       </div>
     </div>
   );
+  const invested = [...new Set((market?.holdings ?? []).map((h) => h.account_id))]
+    .map((id) => accounts.get(id))
+    .filter((a): a is Account => !!a)
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const filters = invested.length > 1 && (
+    <div className="filters-row">
+      <MultiSelect
+        label={t("inv.accountTypes")}
+        allLabel={t("inv.allAccountTypes")}
+        options={[...new Set(invested.map((a) => a.kind))].map((k) => ({ value: k, label: kindLabel(k) }))}
+        selected={types}
+        onChange={setTypes}
+      />
+      <MultiSelect
+        label={t("inv.accounts")}
+        allLabel={t("inv.allAccounts")}
+        options={invested
+          .filter((a) => types.size === 0 || types.has(a.kind))
+          .map((a) => ({ value: a.id, label: a.label }))}
+        selected={accountIds}
+        onChange={setAccountIds}
+      />
+    </div>
+  );
 
   if (!figures) return header;
+  const top = (
+    <>
+      {header}
+      {filters}
+    </>
+  );
   if (figures.rows.length === 0) {
     return (
       <>
-        {header}
+        {top}
         <div className="card empty">
           <p className="secondary" style={{ margin: 0 }}>
             {t("inv.empty")}
@@ -154,7 +204,7 @@ export function InvestmentsPage() {
 
   return (
     <>
-      {header}
+      {top}
 
       <section className="card">
         <div className="hero-label">{t("inv.value")}</div>

@@ -21,12 +21,14 @@ export function AssetsTable({
   history,
   start,
   institutionOf,
+  selectedId,
   onSelect,
 }: {
   accounts: Account[]; // already counted: visible, with a balance, in euros
   history: BalancePoint[];
   start: string | null;
   institutionOf: (account: Account) => string;
+  selectedId?: string | null;
   onSelect: (account: Account) => void;
 }) {
   const [side, setSide] = useState<"assets" | "liabilities">("assets");
@@ -165,7 +167,7 @@ export function AssetsTable({
           <tbody>
             <SummaryRow label={t("portfolio.total")} rows={shown} count />
             {groups.map(([group, groupRows]) => (
-              <GroupRows key={group ?? "all"} group={group} rows={groupRows} onSelect={onSelect} />
+              <GroupRows key={group ?? "all"} group={group} rows={groupRows} selectedId={selectedId} onSelect={onSelect} />
             ))}
             {shown.length === 0 && (
               <tr>
@@ -196,12 +198,27 @@ function compare(a: Row, b: Row, key: SortKey): number {
   }
 }
 
-function GroupRows({ group, rows, onSelect }: { group: string | null; rows: Row[]; onSelect: (a: Account) => void }) {
+function GroupRows({
+  group,
+  rows,
+  selectedId,
+  onSelect,
+}: {
+  group: string | null;
+  rows: Row[];
+  selectedId?: string | null;
+  onSelect: (a: Account) => void;
+}) {
   return (
     <>
       {group && <SummaryRow label={kindLabel(group as AccountKind)} rows={rows} group />}
       {rows.map((row) => (
-        <tr key={row.account.id} className="clickable" onClick={() => onSelect(row.account)}>
+        <tr
+          key={row.account.id}
+          className={row.account.id === selectedId ? "clickable selected" : "clickable"}
+          aria-selected={row.account.id === selectedId}
+          onClick={() => onSelect(row.account)}
+        >
           <td>
             <div>{row.account.label}</div>
             <div className="muted small">

@@ -17,10 +17,10 @@ import {
 import type { Account, Range } from "@kerfin/core";
 import { useMemo, useState } from "react";
 
-import { AccountDetail } from "../components/AccountDetail";
 import { AddAccount } from "../components/AddAccount";
 import { Delta, AssetsTable } from "../components/AssetsTable";
 import { Donut, DonutLegend, LineChart, donutSlices } from "../components/charts";
+import { HoldingsPanel } from "../components/HoldingsPanel";
 import { useMinuteTick } from "../components/Jobs";
 import { useData } from "../data";
 import { ago, errorText, kindLabel, longDate, money, t } from "../i18n";
@@ -161,6 +161,9 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
         </section>
       )}
 
+      {/* The selected account's holdings open on the right of the chart and table. */}
+      <div className={selected ? "with-aside" : undefined}>
+      <div className="main-column">
       <div className="grid-2">
         <section className="card">
           <div className="hero-label">{t("overview.netWorth")}</div>
@@ -234,9 +237,12 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
         history={overview.history}
         start={start}
         institutionOf={accountInstitution}
-        onSelect={setSelected}
+        selectedId={selected?.id ?? null}
+        onSelect={(account) => setSelected((current) => (current?.id === account.id ? null : account))}
       />
-      <AccountDetail account={selected} onClose={() => setSelected(null)} />
+      </div>
+      {selected && <HoldingsPanel key={selected.id} account={selected} onClose={() => setSelected(null)} />}
+      </div>
     </>
   );
 }

@@ -277,3 +277,18 @@ def test_link_diagnostics_show_formats_but_no_ids(caplog: pytest.LogCaptureFixtu
     line = caplog.messages[-1]
     assert "link ids ['digits:6'], included ids ['digits:6']; same ids 0" in line
     assert "123456" not in line and "777777" not in line and "IE00B4L5Y983" not in line
+
+
+@pytest.mark.parametrize("name", ["Lucya Cardif PER", "Carte Avenir Invest", "Prêt Epargne Plus"])
+def test_investment_accounts_are_never_cards_or_loans(name: str) -> None:
+    payload = {
+        "data": [
+            {
+                "id": "a",
+                "type": "account",
+                "attributes": {"name": name, "account_type": "investment", "balance": "1"},
+            }
+        ]
+    }
+    [account] = finary.accounts_from(payload)
+    assert account.kind not in (AccountKind.CARD, AccountKind.LOAN, AccountKind.CHECKING)

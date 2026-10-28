@@ -150,7 +150,7 @@ select {
   overflow-y: auto;
 }
 .page {
-  max-width: 1080px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 28px 32px 64px;
   display: flex;
@@ -792,4 +792,115 @@ th:hover .sort-mark.idle {
 }
 .allocation.stacked .donut {
   align-self: center;
+}
+
+/* Inline account details and the overview's side panel */
+
+.account-item.open {
+  background: var(--accent-wash);
+  border-radius: 8px;
+}
+.account-editor {
+  padding: 4px 8px 14px;
+}
+.editor-fields {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.editor-fields .field {
+  min-width: 160px;
+}
+.with-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+.main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.with-aside .grid-2 {
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1500px) {
+  .with-aside .grid-2 {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 1000px) {
+  .with-aside {
+    grid-template-columns: 1fr;
+  }
+}
+.holdings-panel {
+  position: sticky;
+  top: 56px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+.panel-value {
+  font-size: 22px;
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+.holdings-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.holding-name {
+  overflow-wrap: anywhere;
+}
+.table tr.selected td {
+  background: var(--accent-wash);
+}
+
+/* Filters */
+
+.filters-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.multi-select {
+  position: relative;
+}
+.multi-button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  text-align: left;
+}
+.multi-button.active {
+  border-color: var(--accent);
+}
+.multi-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.multi-option {
+  padding: 5px 8px;
+  border-radius: 6px;
+  align-items: center;
+  cursor: pointer;
+}
+.multi-option:hover {
+  background: var(--accent-wash);
 }

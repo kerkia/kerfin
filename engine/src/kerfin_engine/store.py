@@ -106,7 +106,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -125,6 +125,9 @@ MIGRATIONS = {
         "CREATE TABLE fx_rates (currency TEXT NOT NULL, date TEXT NOT NULL, rate TEXT NOT NULL,"
         " PRIMARY KEY (currency, date))",
     ),
+    # A dialog could save the type shown when it opened, after a sync had corrected it:
+    # "card" chosen for an account detected as something else can only come from that.
+    3: ("UPDATE accounts SET kind_override = NULL WHERE kind_override = 'card' AND kind <> 'card'",),
 }
 
 

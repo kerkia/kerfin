@@ -433,6 +433,8 @@ def _institution(
     return _linked(included, connection.get("institution_ref") or item.get("institution_ref"))
 
 
+_BANKING_KINDS = {AccountKind.CARD, AccountKind.CHECKING, AccountKind.LOAN}
+
 # Institution kinds that say what an account holds, when its own type is just "investment".
 _PRODUCT_KINDS = {
     AccountKind.LIFE_INSURANCE,
@@ -462,6 +464,9 @@ def accounts_from(payload: Any) -> list[Account]:
         # The name often says more than the type ("PEA", "Assurance vie..."); Finary types
         # many accounts as just "investment".
         kind = account_kind(label, *type_text)
+        if kind in _BANKING_KINDS and any(text and "invest" in text.lower() for text in type_text):
+            # Finary says it's an investment: a word in its name can't make it a card or a loan.
+            kind = AccountKind.SECURITIES
         if kind in (AccountKind.OTHER, AccountKind.SECURITIES):
             from_institution = account_kind(_name(institution.get("kind")))
             kind = from_institution if from_institution in _PRODUCT_KINDS else kind
