@@ -222,3 +222,38 @@ def test_known_insurance_contracts_are_life_insurance() -> None:
     }
     [account] = finary.accounts_from(payload)
     assert account.kind is AccountKind.LIFE_INSURANCE
+
+
+def test_holdings_follow_links_whose_type_differs_from_the_resource() -> None:
+    payload = {
+        "data": [
+            {
+                "id": "h1",
+                "type": "holdings",
+                "attributes": {"name": "", "current_value": "1520.40", "current_value_currency": "EUR"},
+                "relationships": {"asset": {"data": {"type": "assets", "id": "42"}}},
+            }
+        ],
+        "included": [
+            {
+                "id": "42",
+                "type": "securities",
+                "attributes": {
+                    "isin": "IE00B4L5Y983",
+                    "name": "iShares Core MSCI World",
+                    "security_type": "etf",
+                    "current_price": "98.12",
+                    "current_price_currency_code": "usd",
+                    "expense_ratio": "0.2",
+                },
+            }
+        ],
+    }
+    [holding] = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    assert (holding.label, holding.isin, holding.security_type, holding.unit_value_currency) == (
+        "iShares Core MSCI World",
+        "IE00B4L5Y983",
+        "etf",
+        "USD",
+    )
+    assert holding.fees == Decimal("0.002")  # 0.2 means 0.2%

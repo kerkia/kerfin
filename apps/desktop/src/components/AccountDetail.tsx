@@ -22,7 +22,8 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
   const [hidden, setHidden] = useState(account.hidden);
   const [balance, setBalance] = useState(account.balance ?? "");
   const [kind, setKind] = useState<AccountKind>(account.kind);
-  const [insurer, setInsurer] = useState(account.insurer ?? "");
+  // Filled in from the contract's name when the user hasn't set it: editable like any value.
+  const [insurer, setInsurer] = useState(account.insurer ?? account.insurer_suggested ?? "");
   const manual = !account.connection_id;
   const currency = account.currency ?? "EUR";
 
@@ -147,7 +148,6 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
               {KIND_OPTIONS.map((k) => (
                 <option key={k} value={k}>
                   {kindLabel(k)}
-                  {!manual && k === account.kind_detected ? ` ${t("detail.detected")}` : ""}
                 </option>
               ))}
             </select>
@@ -159,12 +159,9 @@ function Detail({ account, onClose }: { account: Account; onClose: () => void })
                 id="d-insurer"
                 className="input"
                 value={insurer}
-                placeholder={account.insurer_suggested ?? t("detail.insurerUnknown")}
+                placeholder={t("detail.insurerUnknown")}
                 onChange={(e) => setInsurer(e.target.value)}
               />
-              {!account.insurer && account.insurer_suggested && (
-                <span className="muted small">{t("detail.insurerSuggested", { insurer: account.insurer_suggested })}</span>
-              )}
             </div>
           )}
         </div>

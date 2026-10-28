@@ -315,6 +315,17 @@ def _included(payload: Any) -> dict[tuple[str, str], Mapping[str, Any]]:
     }
 
 
+def _linked(included: dict[tuple[str, str], Mapping[str, Any]], ref: Any) -> Mapping[str, Any]:
+    """The resource a relationship points to. A link may name a general type ("asset")
+    while the resource has its own ("securities"): then the id alone finds it."""
+    if not isinstance(ref, tuple):
+        return {}
+    if ref in included:
+        return included[ref]
+    same_id = [resource for (_, resource_id), resource in included.items() if resource_id == ref[1]]
+    return same_id[0] if len(same_id) == 1 else {}
+
+
 _ID_KEYS = ("id", "account_id", "uuid", "slug")
 _LABEL_KEYS = ("name", "label", "display_name", "title", "custom_name")
 _BALANCE_KEYS = (
@@ -418,8 +429,8 @@ def _institution(
 ) -> Mapping[str, Any]:
     """The account's institution resource, through Finary's JSON:API links (account ->
     institution connection -> institution), followed by the types the links themselves give."""
-    connection = included.get(item.get("institution_connection_ref"), {})  # type: ignore[arg-type]
-    return included.get(connection.get("institution_ref") or item.get("institution_ref"), {})  # type: ignore[arg-type]
+    connection = _linked(included, item.get("institution_connection_ref"))
+    return _linked(included, connection.get("institution_ref") or item.get("institution_ref"))
 
 
 # Institution kinds that say what an account holds, when its own type is just "investment".
@@ -485,7 +496,7 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
         isin = _pick(item, ("isin", "isin_code"))
         # The security itself: nested, or linked in `included` (Finary's "asset").
         security = item.get("security") if isinstance(item.get("security"), Mapping) else None
-        security = security or included.get(item.get("asset_ref") or item.get("security_ref"), {})  # type: ignore[arg-type]
+        security = security or _linked(included, item.get("asset_ref") or item.get("security_ref"))
         isin = isin or _pick(security, ("isin", "isin_code"))
         quantity, _ = _amount(_pick(item, ("quantity", "shares", "units")))
         price_keys = ("unit_value", "price", "current_price", "last_price")
@@ -616,9 +627,25 @@ class FinaryConnector:
                 log.info("Finary holdings answer: %s", json.dumps(shape(payload)))
                 self._holdings = {}
             found = [holding for holdings in holdings_from(payload).values() for holding in holdings]
-            # Public fund data, not personal: they tell how Finary writes types and fees.
+            # Public fund data and type labels, not personal: they tell how Finary links and
+            # writes holdings.
+            data = payload.get("data") if isinstance(payload, Mapping) else None
             log.info(
-                "Finary holding types %s, fees %s",
+                "Finary holdings: link types %s, included types %s, with ISIN %s of %s, types %s, fees %s",
+                sorted(
+                    {
+                        str(
+                            (((item.get("relationships") or {}).get("asset") or {}).get("data") or {}).get(
+                                "type"
+                            )
+                        )
+                        for item in data or []
+                        if isinstance(item, Mapping)
+                    }
+                ),
+                sorted({key[0] for key in _included(payload)}),
+                sum(bool(h.isin) for h in found),
+                len(found),
                 sorted({str(h.security_type) for h in found}),
                 sorted({str(h.fees) for h in found}),
             )
