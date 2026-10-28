@@ -95,9 +95,10 @@ export const engine = {
   sync: (id: string) => call<Job>("POST", `/api/connections/${id}/sync`),
   syncAll: () => call<Job[]>("POST", "/api/sync"),
   removeConnection: (id: string) => call<object>("DELETE", `/api/connections/${id}`),
-  /** Starts signing in to Finary in the browser; `connectionId` to sign in again. */
-  finarySignIn: (connectionId?: string) =>
-    call<{ url: string }>("POST", "/api/finary/sign-in", { connection_id: connectionId }),
+  /** Starts signing in to Finary in `browser`; `connectionId` to sign in again. */
+  finarySignIn: (browser: string, connectionId?: string) =>
+    call<{ url: string }>("POST", "/api/finary/sign-in", { connection_id: connectionId, browser }),
+  browsers: () => call<{ browsers: { id: string; name: string }[]; selected: string }>("GET", "/api/browsers"),
   finarySignInStatus: () => call<FinarySignInStatus>("GET", "/api/finary/sign-in"),
 
   job: (id: string) => call<Job>("GET", `/api/jobs/${id}`),

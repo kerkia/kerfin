@@ -22,6 +22,18 @@ export function FinaryConnect({
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [browsers, setBrowsers] = useState<{ id: string; name: string }[]>([]);
+  const [browser, setBrowser] = useState("default");
+
+  useEffect(() => {
+    engine.browsers().then(
+      (found) => {
+        setBrowsers(found.browsers);
+        setBrowser(found.selected);
+      },
+      () => undefined,
+    );
+  }, []);
 
   useEffect(() => {
     if (!url) return;
@@ -50,7 +62,7 @@ export function FinaryConnect({
     setBusy(true);
     setError(null);
     try {
-      setUrl((await engine.finarySignIn(connectionId)).url);
+      setUrl((await engine.finarySignIn(browser, connectionId)).url);
     } catch (e) {
       setError(e instanceof EngineError ? errorText(e.code) : String(e));
     } finally {
@@ -95,6 +107,24 @@ export function FinaryConnect({
           <p className="secondary" style={{ margin: 0 }}>
             {t("finary.how")}
           </p>
+          {browsers.length > 0 && (
+            <div className="field">
+              <label htmlFor="finary-browser">{t("finary.browser")}</label>
+              <select
+                id="finary-browser"
+                className="input"
+                value={browser}
+                onChange={(e) => setBrowser(e.target.value)}
+              >
+                <option value="default">{t("finary.defaultBrowser")}</option>
+                {browsers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {error && <div className="error-text">{error}</div>}
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={onBack}>

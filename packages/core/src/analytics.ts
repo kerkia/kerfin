@@ -118,3 +118,100 @@ export function changeOver(series: HistoryPoint[], days: number): { absolute: nu
   const absolute = last.value - reference.value;
   return { absolute, relative: reference.value ? absolute / Math.abs(reference.value) : 0 };
 }
+
+/** Periods the overview can show, as on most portfolio apps. */
+export const RANGES = ["1D", "7D", "1M", "3M", "6M", "YTD", "1Y", "ALL"] as const;
+export type Range = (typeof RANGES)[number];
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** First day of `range` ending on `today` (YYYY-MM-DD), or null for all history. */
+export function rangeStart(range: Range, today: string): string | null {
+  const date = new Date(`${today}T00:00:00Z`);
+  switch (range) {
+    case "1D":
+      date.setUTCDate(date.getUTCDate() - 1);
+      break;
+    case "7D":
+      date.setUTCDate(date.getUTCDate() - 7);
+      break;
+    case "1M":
+      date.setUTCMonth(date.getUTCMonth() - 1);
+      break;
+    case "3M":
+      date.setUTCMonth(date.getUTCMonth() - 3);
+      break;
+    case "6M":
+      date.setUTCMonth(date.getUTCMonth() - 6);
+      break;
+    case "YTD":
+      return `${today.slice(0, 4)}-01-01`;
+    case "1Y":
+      date.setUTCFullYear(date.getUTCFullYear() - 1);
+      break;
+    case "ALL":
+      return null;
+  }
+  return isoDate(date);
+}
+
+/** One account's recorded balances, oldest first. */
+export function accountHistory(history: BalancePoint[], accountId: string): HistoryPoint[] {
+  return history
+    .filter((p) => p.account_id === accountId)
+    .map((p) => ({ date: p.date, value: amount(p.balance) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** The part of `series` a range shows: from the last point on or before `start`, so the
+ * line starts at the range's opening value. */
+export function seriesSince(series: HistoryPoint[], start: string | null): HistoryPoint[] {
+  if (start === null) return series;
+  const opening = series.filter((p) => p.date <= start).pop();
+  return [...(opening ? [opening] : []), ...series.filter((p) => p.date > start)];
+}
+
+export interface Change {
+  absolute: number;
+  relative: number | null; // null when the opening value is zero
+  from: string; // date of the opening value
+  partial: boolean; // the history doesn't reach back to the range's start
+}
+
+/** Change from the opening value of the range to the latest value. */
+export function changeSince(series: HistoryPoint[], start: string | null): Change | null {
+  const shown = seriesSince(series, start);
+  const first = shown[0];
+  const last = shown[shown.length - 1];
+  if (!first || !last || first === last) return null;
+  const absolute = last.value - first.value;
+  return {
+    absolute,
+    relative: first.value ? absolute / Math.abs(first.value) : null,
+    from: first.date,
+    partial: start !== null && first.date > start,
+  };
+}
+
+/**
+ * How the counted accounts changed over the range: the sum of each account's change from
+ * its opening value. An account added during the range has no opening value, so it adds
+ * nothing (new money isn't a gain).
+ */
+export function portfolioChange(history: BalancePoint[], accounts: Account[], start: string | null): Change | null {
+  const changes = countedAccounts(accounts)
+    .filter(inBase)
+    .map((account) => ({ account, change: changeSince(accountHistory(history, account.id), start) }))
+    .filter((c): c is { account: Account; change: Change } => c.change !== null);
+  if (changes.length === 0) return null;
+  const absolute = changes.reduce((sum, c) => sum + c.change.absolute, 0);
+  const opening = changes.reduce((sum, c) => sum + amount(c.account.balance) - c.change.absolute, 0);
+  return {
+    absolute,
+    relative: opening ? absolute / Math.abs(opening) : null,
+    from: changes.map((c) => c.change.from).sort()[0]!,
+    partial: changes.some((c) => c.change.partial),
+  };
+}

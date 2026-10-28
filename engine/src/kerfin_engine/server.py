@@ -18,7 +18,6 @@ import re
 import sys
 import threading
 import time
-import webbrowser
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
@@ -29,7 +28,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
 
-from kerfin_engine import institutions, paths
+from kerfin_engine import browsers, institutions, paths
 from kerfin_engine.connectors import finary, registry
 from kerfin_engine.connectors.base import ConnectorError
 from kerfin_engine.domain import AccountKind
@@ -66,7 +65,7 @@ def _locked() -> ApiError:
 # address served without the API token: the browser can't send it, so the sign-in's random
 # `state` stands in for it.
 FINARY_CALLBACK = "/finary/callback"
-open_browser = webbrowser.open  # replaced in tests
+open_browser = browsers.open_url  # replaced in tests
 
 
 @dataclass
@@ -90,15 +89,17 @@ class App:
 
     # Finary sign-in
 
-    def start_finary_sign_in(self, connection_id: str | None) -> str:
-        self.unlocked()
+    def start_finary_sign_in(self, connection_id: str | None, browser: str) -> str:
+        store, _sync = self.unlocked()
         try:
             sign_in = finary.start_sign_in(f"http://127.0.0.1:{self.port}{FINARY_CALLBACK}")
         except ConnectorError as error:
             raise ApiError(HTTPStatus.BAD_GATEWAY, error.code, error.detail) from error
         self.finary_pending = _FinarySignIn(sign_in, connection_id)
         self.finary_status = {"state": "waiting"}
-        threading.Thread(target=open_browser, args=(sign_in.url,), daemon=True).start()
+        store.set_setting("browser", browser)
+        self.persist()
+        threading.Thread(target=open_browser, args=(sign_in.url, browser), daemon=True).start()
         return sign_in.url
 
     def finish_finary_sign_in(self, query: dict[str, str]) -> tuple[bool, str]:
@@ -316,7 +317,18 @@ def finary_sign_in(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
     connection_id = _str(body, "connection_id", required=False) or None
     if connection_id:
         _connection(store, connection_id)
-    return {"url": app.start_finary_sign_in(connection_id)}
+    browser = _str(body, "browser", required=False) or browsers.DEFAULT
+    return {"url": app.start_finary_sign_in(connection_id, browser)}
+
+
+@route("GET", "/api/browsers")
+def list_browsers(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
+    """The browsers a sign-in page can open in, and the one chosen last time."""
+    store, _sync = app.unlocked()
+    return {
+        "browsers": [{"id": b.id, "name": b.name} for b in browsers.installed()],
+        "selected": store.setting("browser", browsers.DEFAULT),
+    }
 
 
 @route("GET", "/api/finary/sign-in")

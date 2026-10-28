@@ -63,7 +63,12 @@ export function LineChart({ series }: { series: HistoryPoint[] }) {
   const t0 = times[0]!;
   const t1 = times[times.length - 1]!;
   const values = series.map((p) => p.value);
-  const ticks = niceTicks(Math.min(...values, 0), Math.max(...values));
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  // A wealth line moves by a few percent: an axis from zero would flatten it. The area wash
+  // only shows when the axis starts at zero, where its height means something.
+  const fromZero = low <= 0 || (high - low) / high > 0.5;
+  const ticks = niceTicks(fromZero ? Math.min(low, 0) : low, high);
   const yMin = ticks[0]!;
   const yMax = ticks[ticks.length - 1]!;
   const innerW = Math.max(width - PAD.left - PAD.right, 10);
@@ -120,7 +125,7 @@ export function LineChart({ series }: { series: HistoryPoint[] }) {
             {shortDate(series[i]!.date)}
           </text>
         ))}
-        <path d={area} fill="var(--accent)" opacity={0.1} />
+        {fromZero && <path d={area} fill="var(--accent)" opacity={0.1} />}
         <path d={line} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {hover !== null && (
           <line
@@ -152,6 +157,145 @@ export function LineChart({ series }: { series: HistoryPoint[] }) {
           <div className="num">{money(point.value)}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+export interface DonutSlice {
+  key: string;
+  label: string;
+  value: number;
+  share: number; // 0..1
+  color: string; // a CSS color, e.g. var(--series-1)
+}
+
+const DONUT_SIZE = 200;
+const DONUT_RING = 22;
+const MAX_SLICES = 6; // part-to-whole reads at a glance up to about six segments
+
+/**
+ * The largest `MAX_SLICES - 1` items keep their own color, in a fixed order; the rest fold
+ * into "Other". Colors follow the item, so a filter never repaints the survivors.
+ */
+export function donutSlices(items: { key: string; label: string; value: number }[], otherLabel: string): DonutSlice[] {
+  const positive = items.filter((item) => item.value > 0).sort((a, b) => b.value - a.value);
+  const total = positive.reduce((sum, item) => sum + item.value, 0) || 1;
+  const kept = positive.length > MAX_SLICES ? positive.slice(0, MAX_SLICES - 1) : positive;
+  const rest = positive.slice(kept.length);
+  const slices = kept.map((item, i) => ({ ...item, share: item.value / total, color: `var(--series-${i + 1})` }));
+  if (rest.length) {
+    const value = rest.reduce((sum, item) => sum + item.value, 0);
+    slices.push({ key: "__other", label: otherLabel, value, share: value / total, color: "var(--series-other)" });
+  }
+  return slices;
+}
+
+function arc(start: number, end: number, radius: number): string {
+  const center = DONUT_SIZE / 2;
+  const point = (angle: number) => [center + radius * Math.sin(angle), center - radius * Math.cos(angle)];
+  const [x0, y0] = point(start);
+  const [x1, y1] = point(end);
+  return `M${x0},${y0}A${radius},${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${x1},${y1}`;
+}
+
+/** Part-to-whole ring with the total in its center and a tooltip per segment. */
+export function Donut({
+  slices,
+  total,
+  totalLabel,
+  active,
+  onActive,
+}: {
+  slices: DonutSlice[];
+  total: string;
+  totalLabel: string;
+  active: string | null;
+  onActive: (key: string | null) => void;
+}) {
+  const radius = (DONUT_SIZE - DONUT_RING) / 2;
+  // A 2px gap between segments, measured along the ring.
+  const gap = slices.length > 1 ? 2 / radius : 0;
+  let angle = 0;
+  const focus = slices.find((s) => s.key === active);
+  return (
+    <div className="donut" style={{ width: DONUT_SIZE, height: DONUT_SIZE }}>
+      <svg width={DONUT_SIZE} height={DONUT_SIZE} role="img" aria-label={slices.map((s) => `${s.label} ${percent(s.share)}`).join(", ")}>
+        {slices.map((slice) => {
+          const start = angle;
+          angle += slice.share * 2 * Math.PI;
+          const end = Math.max(start + 0.001, angle - gap);
+          const full = slices.length === 1;
+          return (
+            <g key={slice.key} onMouseEnter={() => onActive(slice.key)} onMouseLeave={() => onActive(null)}>
+              {full ? (
+                <circle cx={DONUT_SIZE / 2} cy={DONUT_SIZE / 2} r={radius} fill="none" stroke={slice.color} strokeWidth={DONUT_RING} />
+              ) : (
+                <path
+                  d={arc(start, end, radius)}
+                  fill="none"
+                  stroke={slice.color}
+                  strokeWidth={DONUT_RING}
+                  opacity={active && active !== slice.key ? 0.35 : 1}
+                />
+              )}
+              {/* A wider invisible ring: an easier target than the segment itself. */}
+              {!full && <path d={arc(start, end, radius)} fill="none" stroke="transparent" strokeWidth={DONUT_RING + 12} />}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="donut-center">
+        {focus ? (
+          <>
+            <div className="num donut-value">{money(focus.value, "EUR", { maximumFractionDigits: 0 })}</div>
+            <div className="muted small donut-label">
+              {focus.label} · {percent(focus.share)}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="num donut-value">{total}</div>
+            <div className="muted small">{totalLabel}</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** The donut's legend: every segment named, with its share, so color is never the only key. */
+export function DonutLegend({
+  slices,
+  active,
+  onActive,
+}: {
+  slices: DonutSlice[];
+  active: string | null;
+  onActive: (key: string | null) => void;
+}) {
+  const max = Math.max(...slices.map((s) => s.share), 0.0001);
+  return (
+    <div className="donut-legend" role="table">
+      {slices.map((slice) => (
+        <div
+          key={slice.key}
+          role="row"
+          className={active && active !== slice.key ? "legend-row dimmed" : "legend-row"}
+          onMouseEnter={() => onActive(slice.key)}
+          onMouseLeave={() => onActive(null)}
+        >
+          <span role="cell" className="legend-name">
+            <span className="swatch" style={{ background: slice.color }} aria-hidden />
+            <span className="ellipsis">{slice.label}</span>
+          </span>
+          <span className="legend-track" aria-hidden>
+            <span className="legend-bar" style={{ width: `${(slice.share / max) * 100}%`, background: slice.color }} />
+          </span>
+          <span role="cell" className="num small secondary">
+            {percent(slice.share)}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

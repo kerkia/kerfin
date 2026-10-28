@@ -159,11 +159,12 @@ def test_website_logins_are_no_longer_offered_but_still_known(api: Any) -> None:
 
 def test_finary_sign_in_then_sync(api: Any, fake_finary: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     opened: list[str] = []
-    monkeypatch.setattr(server_module, "open_browser", opened.append)
+    monkeypatch.setattr(server_module, "open_browser", lambda url, browser: opened.append(url))
     api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
     assert [i["id"] for i in api("GET", "/api/institutions") if i["offered"]] == ["finary", "demo"]
 
-    url = api("POST", "/api/finary/sign-in", {})["url"]
+    url = api("POST", "/api/finary/sign-in", {"browser": "firefox"})["url"]
+    assert api("GET", "/api/browsers")["selected"] == "firefox"
     assert api("GET", "/api/finary/sign-in")["state"] == "waiting"
     deadline = time.monotonic() + 2
     while not opened:

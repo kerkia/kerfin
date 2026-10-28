@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   allocationByInstitution,
   allocationByKind,
+  accountHistory,
   changeOver,
+  changeSince,
+  portfolioChange,
+  rangeStart,
   netWorth,
   netWorthHistory,
 } from "./analytics";
@@ -98,5 +102,69 @@ describe("changeOver", () => {
     ];
     expect(changeOver(series, 30)).toEqual({ absolute: 32, relative: 0.32 });
     expect(changeOver(series, 365)).toBeNull();
+  });
+});
+
+describe("ranges", () => {
+  const series = [
+    { date: "2026-01-10", value: 100 },
+    { date: "2026-10-01", value: 150 },
+    { date: "2026-10-27", value: 180 },
+    { date: "2026-10-28", value: 200 },
+  ];
+
+  it("starts each range on the right day", () => {
+    expect(rangeStart("1D", "2026-10-28")).toBe("2026-10-27");
+    expect(rangeStart("1M", "2026-10-28")).toBe("2026-09-28");
+    expect(rangeStart("YTD", "2026-10-28")).toBe("2026-01-01");
+    expect(rangeStart("ALL", "2026-10-28")).toBeNull();
+  });
+
+  it("measures change from the range's opening value", () => {
+    const day = changeSince(series, "2026-10-27");
+    expect(day).toMatchObject({ absolute: 20, from: "2026-10-27", partial: false });
+    expect(day?.relative).toBeCloseTo(20 / 180);
+    // On 28 September the latest known value is still January's.
+    expect(changeSince(series, "2026-09-28")).toMatchObject({ absolute: 100, from: "2026-01-10", partial: false });
+    expect(changeSince(series, null)?.absolute).toBe(100);
+  });
+
+  it("flags a range longer than the history", () => {
+    const change = changeSince(series, "2025-10-28");
+    expect(change?.from).toBe("2026-01-10");
+    expect(change?.partial).toBe(true);
+  });
+
+  it("has no change with a single point", () => {
+    expect(changeSince([{ date: "2026-10-28", value: 5 }], "2026-10-27")).toBeNull();
+  });
+
+  it("reads one account's history", () => {
+    const history = [
+      { account_id: "a", date: "2026-10-28", balance: "2" },
+      { account_id: "b", date: "2026-10-27", balance: "9" },
+      { account_id: "a", date: "2026-10-27", balance: "1" },
+    ];
+    expect(accountHistory(history, "a")).toEqual([
+      { date: "2026-10-27", value: 1 },
+      { date: "2026-10-28", value: 2 },
+    ]);
+  });
+});
+
+describe("portfolio change", () => {
+  it("leaves out accounts added during the range", () => {
+    const accounts = [account("a", "savings", "120"), account("new", "savings", "500")];
+    const history = [
+      { account_id: "a", date: "2026-10-01", balance: "100" },
+      { account_id: "a", date: "2026-10-28", balance: "120" },
+      { account_id: "new", date: "2026-10-28", balance: "500" },
+    ];
+    expect(portfolioChange(history, accounts, "2026-10-01")).toEqual({
+      absolute: 20,
+      relative: 0.2,
+      from: "2026-10-01",
+      partial: false,
+    });
   });
 });
