@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { assetClass, assetClasses, breakdown, holdingsHistory, indexOf, pricedHoldings, returns } from "./investments";
+import {
+  assetClass,
+  assetClasses,
+  breakdown,
+  composition,
+  holdingsHistory,
+  indexOf,
+  pricedHoldings,
+  returns,
+} from "./investments";
 import type { IndexProfile, Market, MarketHolding } from "./investments";
 
 function holding(label: string, valuation: string, isin: string | null = null, extra: Partial<MarketHolding> = {}): MarketHolding {
@@ -142,5 +151,14 @@ describe("performance", () => {
     expect(returns(m, world!, "USD", null).oneYear).toBeCloseTo(0.1);
     expect(returns(m, world!, "EUR", null).oneYear).toBeCloseTo(0);
     expect(returns(m, world!, "EUR", null).threeYears).toBeNull();
+  });
+});
+
+describe("exposure of one holding", () => {
+  it("is the index weights for an index fund, all of it for a company share", () => {
+    const m = market();
+    expect(composition(m, m.holdings[0]!, "countries")).toEqual({ "United States": 0.75, Japan: 0.05, Other: 0.2 });
+    expect(composition(m, m.holdings[1]!, "sectors")).toEqual({ "Information Technology": 1 });
+    expect(composition(m, m.holdings[2]!, "countries")).toBeNull();
   });
 });

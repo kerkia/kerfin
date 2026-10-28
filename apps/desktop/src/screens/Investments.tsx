@@ -6,6 +6,7 @@ import {
   assetClass,
   assetClasses,
   breakdown,
+  composition,
   holdingsHistory,
   indexOf,
   pricedHoldings,
@@ -22,6 +23,27 @@ import { engine } from "../engine";
 import { kindLabel, money, percent, t } from "../i18n";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF"] as const;
+const OTHER = "__other"; // the folded rest of a breakdown
+
+interface Pick {
+  dimension: "class" | "countries" | "sectors";
+  key: string;
+  label: string;
+  shown?: string[]; // for OTHER: the keys shown separately, which it excludes
+}
+
+/** How much of a holding the pick covers (0..1), or null when its composition is unknown. */
+function exposure(market: Market, holding: Market["holdings"][number], kind: AssetClass, pick: Pick): number | null {
+  if (pick.dimension === "class") {
+    return pick.key === OTHER ? (pick.shown?.includes(kind) ? 0 : 1) : kind === pick.key ? 1 : 0;
+  }
+  const shares = composition(market, holding, pick.dimension);
+  if (!shares) return null;
+  if (pick.key !== OTHER) return shares[pick.key] ?? 0;
+  return Object.entries(shares)
+    .filter(([key]) => !pick.shown?.includes(key))
+    .reduce((sum, [, share]) => sum + share, 0);
+}
 const TOP_COUNTRIES = 9;
 
 function localToday(): string {
@@ -52,6 +74,10 @@ export function InvestmentsPage() {
   const [range, setRange] = useState<Range>(() => stored("kerfin.invRange", PERFORMANCE_RANGES, "1Y"));
   const [currency, setCurrency] = useState<string>(() => stored("kerfin.currency", CURRENCIES, "EUR"));
   const [active, setActive] = useState<string | null>(null);
+  // A class, country or sector picked in a breakdown: it filters the table.
+  const [pick, setPick] = useState<Pick | null>(null);
+  const toggle = (next: Pick) =>
+    setPick((current) => (current?.dimension === next.dimension && current.key === next.key ? null : next));
   // Filters: no choice means everything.
   const [types, setTypes] = useState<Set<string>>(new Set());
   const [accountIds, setAccountIds] = useState<Set<string>>(new Set());
@@ -199,6 +225,19 @@ export function InvestmentsPage() {
     );
   }
 
+  const pickClass = (key: string) =>
+    toggle({
+      dimension: "class",
+      key,
+      label: figures.classes.find((s) => s.key === key)?.label ?? key,
+      shown: figures.classes.filter((s) => s.key !== "__other").map((s) => s.key),
+    });
+  // The table, narrowed to what the pick covers, with how much of each holding it is.
+  const exposed = pick !== null && pick.dimension !== "class";
+  const rows = figures.rows
+    .map((row) => ({ ...row, share: pick && market ? exposure(market, row.holding, row.kind, pick) : 1 }))
+    .filter((row) => !pick || (row.share ?? 0) > 0);
+
   const first = figures.history[0];
   const last = figures.history[figures.history.length - 1];
   const change = first && last && first !== last ? last.value / first.value - 1 : null;
@@ -251,17 +290,42 @@ export function InvestmentsPage() {
               totalLabel={t("portfolio.total")}
               active={active}
               onActive={setActive}
+              onSelect={pickClass}
             />
-            <DonutLegend slices={figures.classes} active={active} onActive={setActive} />
+            <DonutLegend
+              slices={figures.classes}
+              active={active}
+              onActive={setActive}
+              selected={pick?.dimension === "class" ? pick.key : null}
+              onSelect={pickClass}
+            />
           </div>
         </section>
-        <BreakdownCard title={t("inv.geography")} data={figures.countries} limit={TOP_COUNTRIES} />
-        <BreakdownCard title={t("inv.sectors")} data={figures.sectors} />
+        <BreakdownCard
+          title={t("inv.geography")}
+          data={figures.countries}
+          limit={TOP_COUNTRIES}
+          selected={pick?.dimension === "countries" ? pick.key : null}
+          onSelect={(key, label, shown) => toggle({ dimension: "countries", key, label, shown })}
+        />
+        <BreakdownCard
+          title={t("inv.sectors")}
+          data={figures.sectors}
+          selected={pick?.dimension === "sectors" ? pick.key : null}
+          onSelect={(key, label, shown) => toggle({ dimension: "sectors", key, label, shown })}
+        />
       </div>
 
       <section className="card">
         <div className="card-header">
           <h2>{t("inv.funds")}</h2>
+          {pick ? (
+            <button className="filter-chip" onClick={() => setPick(null)} aria-label={t("inv.clearPick")}>
+              {t("inv.showing", { what: pick.label })} <span aria-hidden>✕</span>
+            </button>
+          ) : (
+            <span className="muted small">{t("inv.pickHint")}</span>
+          )}
         </div>
         <div className="table-scroll">
           <table className="table portfolio">
@@ -272,6 +336,7 @@ export function InvestmentsPage() {
                 <th>{t("inv.index")}</th>
                 <th className="right">{t("portfolio.value")}</th>
                 <th className="right">{t("portfolio.share")}</th>
+                {exposed && <th className="right">{t("inv.exposure", { what: pick!.label })}</th>}
                 <th className="right">
                   {t("inv.periodReturn")} ({t(`range.${range}`)})
                 </th>
@@ -282,11 +347,11 @@ export function InvestmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {figures.rows.map(({ holding, kind, index, returns: r }, i) => (
+              {rows.map(({ holding, kind, index, returns: r, share }, i) => (
                 <tr key={`${holding.account_id}-${holding.isin ?? holding.label}-${i}`}>
                   <td>
                     <div>
-                      {holding.label} <MatchTag match={holding.match} />
+                      {holding.label === "?" ? t("panel.unnamed") : holding.label} <MatchTag match={holding.match} />
                     </div>
                     <div className="muted small">
                       {[holding.isin, accounts.get(holding.account_id)?.label].filter(Boolean).join(" · ")}
@@ -311,6 +376,18 @@ export function InvestmentsPage() {
                   <td className="right num">
                     {holding.valuation === null ? "—" : percent(amount(holding.valuation) / (holdingsTotal || 1))}
                   </td>
+                  {exposed && (
+                    <td className="right num">
+                      {percent(share ?? 0)}
+                      {holding.valuation !== null && (
+                        <div className="muted small">
+                          {money(amount(holding.valuation) * (share ?? 0), holding.currency ?? "EUR", {
+                            maximumFractionDigits: 0,
+                          })}
+                        </div>
+                      )}
+                    </td>
+                  )}
                   <Return value={r?.period} />
                   <Return value={r?.oneYear} />
                   <Return value={r?.threeYears} />
@@ -352,14 +429,29 @@ function Return({ value }: { value: number | null | undefined }) {
   );
 }
 
-/** A split by country or sector, as shares of what is known, with how much is known. */
-function BreakdownCard({ title, data, limit }: { title: string; data: Breakdown; limit?: number }) {
+/** A split by country or sector, as shares of what is known, with how much is known.
+ * Picking a row filters the table. */
+function BreakdownCard({
+  title,
+  data,
+  limit,
+  selected,
+  onSelect,
+}: {
+  title: string;
+  data: Breakdown;
+  limit?: number;
+  selected: string | null;
+  onSelect: (key: string, label: string, shown?: string[]) => void;
+}) {
   const covered = data.covered || 1;
   let slices = data.slices.map((s) => ({ key: s.key, value: s.value, share: s.value / covered }));
   if (limit && slices.length > limit) {
     const rest = slices.slice(limit - 1).reduce((sum, s) => sum + s.value, 0);
-    slices = [...slices.slice(0, limit - 1), { key: t("inv.otherCountries"), value: rest, share: rest / covered }];
+    slices = [...slices.slice(0, limit - 1), { key: OTHER, value: rest, share: rest / covered }];
   }
+  const label = (key: string) => (key === OTHER ? t("inv.otherCountries") : key);
+  const shown = slices.filter((s) => s.key !== OTHER).map((s) => s.key);
   return (
     <section className="card">
       <div className="card-header">
@@ -367,7 +459,13 @@ function BreakdownCard({ title, data, limit }: { title: string; data: Breakdown;
       </div>
       {data.covered > 0 ? (
         <>
-          <BarList slices={slices} label={(key) => key} sharesOnly />
+          <BarList
+            slices={slices}
+            label={label}
+            sharesOnly
+            selected={selected}
+            onSelect={(key) => onSelect(key, label(key), shown)}
+          />
           <p className="muted small" style={{ margin: "10px 0 0" }}>
             {t("inv.breakdownCoverage", { covered: percent(data.covered / (data.total || 1)) })}
           </p>

@@ -50,6 +50,7 @@ CREATE TABLE accounts (
     updated_at TEXT NOT NULL,
     hidden INTEGER NOT NULL DEFAULT 0,
     kind_override TEXT,            -- the user's choice, kept across syncs
+    label_override TEXT,           -- the name the user gave, kept across syncs
     insurer TEXT,                  -- life insurance and PER: set by the user
     UNIQUE (connection_id, external_id)
 );
@@ -107,7 +108,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -130,6 +131,7 @@ MIGRATIONS = {
     # "card" chosen for an account detected as something else can only come from that.
     3: ("UPDATE accounts SET kind_override = NULL WHERE kind_override = 'card' AND kind <> 'card'",),
     4: ("ALTER TABLE holdings ADD COLUMN match TEXT",),
+    5: ("ALTER TABLE accounts ADD COLUMN label_override TEXT",),
 }
 
 
@@ -403,7 +405,8 @@ class Store:
         back to the detected kind."""
         with self.transaction() as db:
             if label is not None:
-                db.execute("UPDATE accounts SET label = ? WHERE id = ?", (label, account_id))
+                # Kept apart from the source's name, which each sync refreshes.
+                db.execute("UPDATE accounts SET label_override = ? WHERE id = ?", (label, account_id))
             if hidden is not None:
                 db.execute("UPDATE accounts SET hidden = ? WHERE id = ?", (int(hidden), account_id))
             if kind is not None or reset_kind:
@@ -422,11 +425,12 @@ class Store:
 
     def accounts(self) -> list[dict[str, Any]]:
         rows = self._rows(
-            "SELECT a.id, a.connection_id, c.institution, a.institution_name, a.label,"
+            "SELECT a.id, a.connection_id, c.institution, a.institution_name,"
+            " COALESCE(a.label_override, a.label) AS label,"
             " COALESCE(a.kind_override, a.kind) AS kind, a.kind AS kind_detected,"
             " a.kind_override IS NOT NULL AS kind_set, a.insurer, a.subtype, a.number, a.currency,"
             " a.balance, a.opening_date, a.updated_at, a.hidden"
-            " FROM accounts a LEFT JOIN connections c ON c.id = a.connection_id ORDER BY a.label"
+            " FROM accounts a LEFT JOIN connections c ON c.id = a.connection_id ORDER BY 5"
         )
         for row in rows:
             row["hidden"] = bool(row["hidden"])

@@ -130,7 +130,7 @@ def test_insurer_is_suggested_from_the_contract_name() -> None:
 def test_older_vaults_are_migrated() -> None:
     store = Store.create()
     # Back to the first schema: what versions 2 and 3 added goes.
-    for column in ("kind_override", "insurer"):
+    for column in ("kind_override", "insurer", "label_override"):
         store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
     for column in ("unit_value_currency", "security_type", "fees", "match"):
         store._db.execute(f"ALTER TABLE holdings DROP COLUMN {column}")
@@ -143,7 +143,7 @@ def test_older_vaults_are_migrated() -> None:
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
     assert migrated.holdings() == [] and migrated.market()["prices"] == {}
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 6
 
 
 def test_stray_card_choices_are_cleared() -> None:
@@ -153,7 +153,18 @@ def test_stray_card_choices_are_cleared() -> None:
     [account] = store.accounts()
     store.update_account(account["id"], kind=AccountKind.CARD)
     store._db.execute("ALTER TABLE holdings DROP COLUMN match")  # added by version 5
+    store._db.execute("ALTER TABLE accounts DROP COLUMN label_override")  # added by version 6
     store._db.execute("PRAGMA user_version = 3")
 
     [account] = Store.load(store.dump()).accounts()
     assert account["kind"] == account["kind_detected"] != "card" and not account["kind_set"]
+
+
+def test_a_name_given_by_the_user_survives_syncs() -> None:
+    store = Store.create()
+    connection_id = store.add_connection("finary", "Finary", {}, {}, remember=True)
+    _sync(store, connection_id, "1000.00", date(2026, 1, 1))
+    [account] = store.accounts()
+    store.update_account(account["id"], label="My broker")
+    _sync(store, connection_id, "1100.00", date(2026, 1, 2))
+    assert [a["label"] for a in store.accounts()] == ["My broker"]

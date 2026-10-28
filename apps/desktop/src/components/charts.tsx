@@ -3,23 +3,49 @@ import { useEffect, useRef, useState } from "react";
 
 import { compactMoney, longDate, money, percent, shortDate } from "../i18n";
 
+/** Props making rows pickable: clicking one selects it (a filter), clicking it again clears. */
+interface Pickable {
+  selected?: string | null;
+  onSelect?: (key: string) => void;
+}
+
+/** A row's props when the list is pickable: a keyboard-reachable toggle. */
+function pickProps(key: string, { selected, onSelect }: Pickable, base: string) {
+  if (!onSelect) return { className: base };
+  const state = selected === key ? " selected" : selected ? " dimmed" : "";
+  return {
+    className: `${base} pickable${state}`,
+    tabIndex: 0,
+    "aria-pressed": selected === key,
+    onClick: () => onSelect(key),
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onSelect(key);
+      }
+    },
+  };
+}
+
 /** Ranked horizontal bars, one hue: each row is a category's share of the total. */
 export function BarList({
   slices,
   label,
   sharesOnly,
+  selected,
+  onSelect,
 }: {
   slices: Slice[];
   label: (key: string) => string;
   sharesOnly?: boolean; // percentages without amounts
-}) {
+} & Pickable) {
   const max = Math.max(...slices.map((s) => s.value), 1);
   return (
     <div className="bar-list" role="table">
       {slices.map((slice) => (
         <div
-          className="bar-item"
-          role="row"
+          {...pickProps(slice.key, { selected, onSelect }, "bar-item")}
+          role={onSelect ? "button" : "row"}
           key={slice.key}
           title={`${label(slice.key)}: ${money(slice.value)} (${percent(slice.share)})`}
         >
@@ -219,12 +245,14 @@ export function Donut({
   totalLabel,
   active,
   onActive,
+  onSelect,
 }: {
   slices: DonutSlice[];
   total: string;
   totalLabel: string;
   active: string | null;
   onActive: (key: string | null) => void;
+  onSelect?: (key: string) => void;
 }) {
   const radius = (DONUT_SIZE - DONUT_RING) / 2;
   // A 2px gap between segments, measured along the ring.
@@ -240,7 +268,13 @@ export function Donut({
           const end = Math.max(start + 0.001, angle - gap);
           const full = slices.length === 1;
           return (
-            <g key={slice.key} onMouseEnter={() => onActive(slice.key)} onMouseLeave={() => onActive(null)}>
+            <g
+              key={slice.key}
+              onMouseEnter={() => onActive(slice.key)}
+              onMouseLeave={() => onActive(null)}
+              onClick={onSelect ? () => onSelect(slice.key) : undefined}
+              style={onSelect ? { cursor: "pointer" } : undefined}
+            >
               {full ? (
                 <circle cx={DONUT_SIZE / 2} cy={DONUT_SIZE / 2} r={radius} fill="none" stroke={slice.color} strokeWidth={DONUT_RING} />
               ) : (
@@ -282,19 +316,21 @@ export function DonutLegend({
   slices,
   active,
   onActive,
+  selected,
+  onSelect,
 }: {
   slices: DonutSlice[];
   active: string | null;
   onActive: (key: string | null) => void;
-}) {
+} & Pickable) {
   const max = Math.max(...slices.map((s) => s.share), 0.0001);
   return (
     <div className="donut-legend" role="table">
       {slices.map((slice) => (
         <div
           key={slice.key}
-          role="row"
-          className={active && active !== slice.key ? "legend-row dimmed" : "legend-row"}
+          role={onSelect ? "button" : "row"}
+          {...pickProps(slice.key, { selected, onSelect }, active && active !== slice.key ? "legend-row dimmed" : "legend-row")}
           onMouseEnter={() => onActive(slice.key)}
           onMouseLeave={() => onActive(null)}
         >

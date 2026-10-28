@@ -116,29 +116,39 @@ export function breakdown(market: Market, dimension: "countries" | "sectors"): B
   const totals = new Map<string, number>();
   let covered = 0;
   let total = 0;
-  const add = (key: string, value: number) => totals.set(key, (totals.get(key) ?? 0) + value);
   for (const holding of market.holdings) {
     const value = amount(holding.valuation);
     if (value <= 0) continue;
     total += value;
-    const security = holding.isin ? market.securities[holding.isin] : undefined;
-    if (security?.quote_type === "EQUITY") {
-      const key = dimension === "countries" ? security.country : security.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
-      if (key) {
-        add(key, value);
-        covered += value;
-      }
-      continue;
-    }
-    const index = indexOf(holding, market.indices, security);
-    if (!index) continue;
-    const weights = index[dimension];
-    const sum = Object.values(weights).reduce((s, w) => s + w, 0) || 100;
-    for (const [key, weight] of Object.entries(weights)) add(key, (value * weight) / sum);
+    const shares = composition(market, holding, dimension);
+    if (!shares) continue;
+    for (const [key, share] of Object.entries(shares)) totals.set(key, (totals.get(key) ?? 0) + value * share);
     covered += value;
   }
   const slices = [...totals].map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value);
   return { slices, covered, total };
+}
+
+/**
+ * What one holding is made of, by country or sector, as fractions adding up to 1: a
+ * company share is all in its own; an index fund follows its index. Null when unknown.
+ */
+export function composition(
+  market: Market,
+  holding: MarketHolding,
+  dimension: "countries" | "sectors",
+): Record<string, number> | null {
+  const security = holding.isin ? market.securities[holding.isin] : undefined;
+  if (security?.quote_type === "EQUITY") {
+    const key =
+      dimension === "countries" ? security.country : security.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
+    return key ? { [key]: 1 } : null;
+  }
+  const index = indexOf(holding, market.indices, security);
+  if (!index) return null;
+  const weights = index[dimension];
+  const sum = Object.values(weights).reduce((s, w) => s + w, 0) || 100;
+  return Object.fromEntries(Object.entries(weights).map(([key, weight]) => [key, weight / sum]));
 }
 
 /** Holdings by asset class, in euros, largest first. */
