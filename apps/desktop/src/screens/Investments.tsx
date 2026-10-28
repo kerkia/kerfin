@@ -95,8 +95,9 @@ export function InvestmentsPage() {
       classesTotal: classes.reduce((sum, c) => sum + c.value, 0),
       countries: breakdown(scoped, "countries"),
       sectors: breakdown(scoped, "sectors"),
+      // Securities listed without a value are shown too, for their information.
       rows: scoped.holdings
-        .filter((h) => amount(h.valuation) > 0)
+        .filter((h) => amount(h.valuation) > 0 || h.match === "unpaired")
         .map((holding) => {
           const security = holding.isin ? scoped.securities[holding.isin] : undefined;
           const pricedHolding = priced.find((p) => p.holding === holding);
@@ -284,7 +285,9 @@ export function InvestmentsPage() {
               {figures.rows.map(({ holding, kind, index, returns: r }, i) => (
                 <tr key={`${holding.account_id}-${holding.isin ?? holding.label}-${i}`}>
                   <td>
-                    <div>{holding.label}</div>
+                    <div>
+                      {holding.label} <MatchTag match={holding.match} />
+                    </div>
                     <div className="muted small">
                       {[holding.isin, accounts.get(holding.account_id)?.label].filter(Boolean).join(" · ")}
                     </div>
@@ -302,8 +305,12 @@ export function InvestmentsPage() {
                       "—"
                     )}
                   </td>
-                  <td className="right num">{money(amount(holding.valuation), holding.currency ?? "EUR")}</td>
-                  <td className="right num">{percent(amount(holding.valuation) / (holdingsTotal || 1))}</td>
+                  <td className="right num">
+                    {holding.valuation === null ? "—" : money(amount(holding.valuation), holding.currency ?? "EUR")}
+                  </td>
+                  <td className="right num">
+                    {holding.valuation === null ? "—" : percent(amount(holding.valuation) / (holdingsTotal || 1))}
+                  </td>
                   <Return value={r?.period} />
                   <Return value={r?.oneYear} />
                   <Return value={r?.threeYears} />
@@ -319,6 +326,16 @@ export function InvestmentsPage() {
         </p>
       </section>
     </>
+  );
+}
+
+/** Marks a security Kerfin paired with its value by guessing (see HoldingMatch). */
+export function MatchTag({ match }: { match: string | null }) {
+  if (match !== "order" && match !== "order_uncertain" && match !== "unpaired") return null;
+  return (
+    <span className={`tag match-tag ${match}`} title={t(`match.${match}Help`)}>
+      {t(`match.${match}`)}
+    </span>
   );
 }
 

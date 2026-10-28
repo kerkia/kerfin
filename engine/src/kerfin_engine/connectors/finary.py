@@ -488,21 +488,43 @@ def accounts_from(payload: Any) -> list[Account]:
 
 
 def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
-    """Holdings by Finary account id (None when the answer doesn't say)."""
+    """Holdings by Finary account id (None when the answer doesn't say).
+
+    Each holding's security comes from its link. When no link leads anywhere (Finary's
+    holdings point to "assets" it doesn't include), holdings and the included securities are
+    paired by their order in the answer: a guess, marked in `match` for the user to check.
+    """
     by_account: dict[str | None, list[Holding]] = {}
     included = _included(payload)
-    for item in _records(payload, ("quantity", "isin", "valuation", "current_value", "value")):
+    data = payload.get("data") if isinstance(payload, Mapping) else None
+    records = (
+        [_flat(item) for item in data if isinstance(item, Mapping)]
+        if isinstance(data, list)
+        else _records(payload, ("quantity", "isin", "valuation", "current_value", "value"))
+    )
+    securities: list[Mapping[str, Any]] = []
+    matches: list[str | None] = []
+    for item in records:
+        nested = item.get("security") if isinstance(item.get("security"), Mapping) else None
+        security = nested or _linked(included, item.get("asset_ref") or item.get("security_ref"))
+        securities.append(security)
+        matches.append("linked" if security else None)
+    unpaired: list[Mapping[str, Any]] = []
+    if records and included and not any(securities):
+        candidates = list(included.values())
+        certain = len(candidates) == len(records)
+        for i in range(len(records)):
+            securities[i] = candidates[i] if i < len(candidates) else {}
+            matches[i] = "order" if certain else "order_uncertain"
+        unpaired = candidates[len(records) :]
+    for item, security, match in zip(records, securities, matches, strict=True):
         valuation, currency = _amount(
             _pick(item, ("current_value", "valuation", "value", "amount", "balance"))
         )
         account = item.get("account_id") or item.get("account")
         if isinstance(account, Mapping):
             account = _pick(account, _ID_KEYS)
-        isin = _pick(item, ("isin", "isin_code"))
-        # The security itself: nested, or linked in `included` (Finary's "asset").
-        security = item.get("security") if isinstance(item.get("security"), Mapping) else None
-        security = security or _linked(included, item.get("asset_ref") or item.get("security_ref"))
-        isin = isin or _pick(security, ("isin", "isin_code"))
+        isin = _pick(item, ("isin", "isin_code")) or _pick(security, ("isin", "isin_code"))
         quantity, _ = _amount(_pick(item, ("quantity", "shares", "units")))
         price_keys = ("unit_value", "price", "current_price", "last_price")
         unit_value, _ = _amount(_pick(item, price_keys) or _pick(security, price_keys))
@@ -524,6 +546,26 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
                 ),
                 security_type=_name(_pick(item, _SECURITY_TYPE_KEYS) or _pick(security, _SECURITY_TYPE_KEYS)),
                 fees=_fraction(fees),
+                match=match,
+            )
+        )
+    # Securities left over when they outnumber the holdings: listed, without a value.
+    for security in unpaired:
+        fees, _ = _amount(_pick(security, _FEE_KEYS))
+        price, _ = _amount(_pick(security, ("current_price", "price", "last_price")))
+        currency = _upper(_pick(security, ("current_price_currency_code", "currency_code", "currency")))
+        isin = _pick(security, ("isin", "isin_code"))
+        by_account.setdefault(None, []).append(
+            Holding(
+                label=_name(_pick(security, _LABEL_KEYS)) or isin or "?",
+                valuation=None,
+                currency=currency,
+                isin=str(isin) if isin else None,
+                unit_value=price,
+                unit_value_currency=currency,
+                security_type=_name(_pick(security, _SECURITY_TYPE_KEYS)),
+                fees=_fraction(fees),
+                match="unpaired",
             )
         )
     return by_account
@@ -620,11 +662,13 @@ class FinaryConnector:
             },
         )
         self._holdings: dict[str | None, list[Holding]] | None = None
+        self._labels: dict[str, str] = {}
 
     def accounts(self) -> list[Account]:
         payload = self._mcp.call("accounts")
         log.info("Finary accounts answer: %s", json.dumps(shape(payload)))
         found = accounts_from(payload)
+        self._labels = {account.external_id: account.label for account in found}
         # Category names, not personal data: they tune the account kinds.
         log.info("Finary account types: %s", sorted({str(a.subtype) for a in found}))
         log.info("Finary account kinds: %s", sorted({str(a.kind) for a in found}))
@@ -677,6 +721,14 @@ class FinaryConnector:
                 self._holdings = {}
             found = [holding for holdings in holdings_from(payload).values() for holding in holdings]
             _log_links(payload, found)
+            if any(h.match == "order_uncertain" for h in found):
+                # The account's name only (no amounts), so the user knows which one to check.
+                log.info(
+                    "Finary holdings of %r paired by order, uncertain: %s values, %s securities",
+                    self._labels.get(account_id, account_id),
+                    sum(h.match != "unpaired" for h in found),
+                    len(_included(payload)),
+                )
             return found
         log.info("Finary holdings needs %s: not read yet", required)
         return []

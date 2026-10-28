@@ -292,3 +292,47 @@ def test_investment_accounts_are_never_cards_or_loans(name: str) -> None:
     }
     [account] = finary.accounts_from(payload)
     assert account.kind not in (AccountKind.CARD, AccountKind.LOAN, AccountKind.CHECKING)
+
+
+def _unlinked(values: list[str], securities: list[tuple[str, str]]) -> dict:
+    """A holdings answer shaped like Finary's (2026-10-28): links to "assets" it doesn't include."""
+    return {
+        "data": [
+            {
+                "id": f"h{i}",
+                "type": "holdings",
+                "attributes": {"name": "", "current_value": value, "current_value_currency": "EUR"},
+                "relationships": {
+                    "asset": {"data": {"type": "assets", "id": f"0000000{i}-aaaa-bbbb-cccc-dddddddddddd"}}
+                },
+            }
+            for i, value in enumerate(values)
+        ],
+        "included": [
+            {"id": str(100 + i), "type": "securities", "attributes": {"isin": isin, "name": name}}
+            for i, (isin, name) in enumerate(securities)
+        ],
+    }
+
+
+def test_unlinked_holdings_are_paired_by_order() -> None:
+    payload = _unlinked(["100", "200"], [("FR0000000001", "Fund A"), ("FR0000000002", "Fund B")])
+    holdings = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    assert [(h.label, h.isin, h.valuation, h.match) for h in holdings] == [
+        ("Fund A", "FR0000000001", Decimal("100"), "order"),
+        ("Fund B", "FR0000000002", Decimal("200"), "order"),
+    ]
+
+
+def test_differing_counts_mark_the_pairing_uncertain() -> None:
+    more_values = _unlinked(["100", "200", "300"], [("FR0000000001", "Fund A"), ("FR0000000002", "Fund B")])
+    holdings = [h for hs in finary.holdings_from(more_values).values() for h in hs]
+    assert [h.match for h in holdings] == ["order_uncertain"] * 3
+    assert holdings[2].isin is None and holdings[2].valuation == Decimal("300")
+
+    more_funds = _unlinked(["100"], [("FR0000000001", "Fund A"), ("FR0000000002", "Fund B")])
+    holdings = [h for hs in finary.holdings_from(more_funds).values() for h in hs]
+    assert [(h.isin, h.valuation, h.match) for h in holdings] == [
+        ("FR0000000001", Decimal("100"), "order_uncertain"),
+        ("FR0000000002", None, "unpaired"),
+    ]

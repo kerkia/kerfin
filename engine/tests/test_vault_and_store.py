@@ -132,7 +132,7 @@ def test_older_vaults_are_migrated() -> None:
     # Back to the first schema: what versions 2 and 3 added goes.
     for column in ("kind_override", "insurer"):
         store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
-    for column in ("unit_value_currency", "security_type", "fees"):
+    for column in ("unit_value_currency", "security_type", "fees", "match"):
         store._db.execute(f"ALTER TABLE holdings DROP COLUMN {column}")
     for table in ("securities", "prices", "fx_rates"):
         store._db.execute(f"DROP TABLE {table}")
@@ -143,7 +143,7 @@ def test_older_vaults_are_migrated() -> None:
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
     assert migrated.holdings() == [] and migrated.market()["prices"] == {}
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_stray_card_choices_are_cleared() -> None:
@@ -152,6 +152,7 @@ def test_stray_card_choices_are_cleared() -> None:
     _sync(store, connection_id, "1000.00", date(2026, 1, 1))
     [account] = store.accounts()
     store.update_account(account["id"], kind=AccountKind.CARD)
+    store._db.execute("ALTER TABLE holdings DROP COLUMN match")  # added by version 5
     store._db.execute("PRAGMA user_version = 3")
 
     [account] = Store.load(store.dump()).accounts()

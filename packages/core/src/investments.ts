@@ -2,6 +2,7 @@
 // sectors, and the history of today's holdings priced over time, in any currency.
 import type { HistoryPoint } from "./analytics";
 import { amount } from "./analytics";
+import type { HoldingMatch } from "./types";
 
 export interface MarketHolding {
   account_id: string;
@@ -13,6 +14,7 @@ export interface MarketHolding {
   unit_value_currency: string | null;
   security_type: string | null;
   fees: string | null; // yearly, as a fraction
+  match: HoldingMatch | null;
 }
 
 export interface SecurityInfo {

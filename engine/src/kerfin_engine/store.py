@@ -65,7 +65,8 @@ CREATE TABLE holdings (
     value_date TEXT,
     unit_value_currency TEXT,
     security_type TEXT,
-    fees TEXT
+    fees TEXT,
+    match TEXT                     -- how the security was found (see domain.Holding)
 );
 -- Market data for the securities held: where their prices come from, and the prices.
 CREATE TABLE securities (
@@ -106,7 +107,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -128,6 +129,7 @@ MIGRATIONS = {
     # A dialog could save the type shown when it opened, after a sync had corrected it:
     # "card" chosen for an account detected as something else can only come from that.
     3: ("UPDATE accounts SET kind_override = NULL WHERE kind_override = 'card' AND kind <> 'card'",),
+    4: ("ALTER TABLE holdings ADD COLUMN match TEXT",),
 }
 
 
@@ -285,8 +287,8 @@ class Store:
                     db.execute("DELETE FROM holdings WHERE account_id = ?", (account_id,))
                     db.executemany(
                         "INSERT INTO holdings (account_id, label, isin, quantity, unit_value, unit_price,"
-                        " valuation, currency, value_date, unit_value_currency, security_type, fees)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " valuation, currency, value_date, unit_value_currency, security_type, fees, match)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [
                             (
                                 account_id,
@@ -301,6 +303,7 @@ class Store:
                                 h.unit_value_currency,
                                 h.security_type,
                                 _text(h.fees),
+                                h.match,
                             )
                             for h in holdings
                         ],
@@ -436,8 +439,8 @@ class Store:
         """One account's holdings, or every holding (with its account) when `account_id` is None."""
         return self._rows(
             "SELECT account_id, label, isin, quantity, unit_value, unit_price, valuation, currency,"
-            " value_date, unit_value_currency, security_type, fees"
-            " FROM holdings WHERE ? IS NULL OR account_id = ? ORDER BY CAST(valuation AS REAL) DESC",
+            " value_date, unit_value_currency, security_type, fees, match"
+            " FROM holdings WHERE ? IS NULL OR account_id = ? ORDER BY rowid",  # the source's order
             account_id,
             account_id,
         )

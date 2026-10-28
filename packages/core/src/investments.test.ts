@@ -14,6 +14,7 @@ function holding(label: string, valuation: string, isin: string | null = null, e
     unit_value_currency: null,
     security_type: null,
     fees: null,
+    match: null,
     ...extra,
   };
 }

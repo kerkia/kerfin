@@ -71,7 +71,15 @@ export interface Holding {
   valuation: string | null;
   currency: string | null;
   value_date: string | null;
+  match: HoldingMatch | null;
 }
+
+/**
+ * How a holding's security was found: linked by the source, or guessed from the order of
+ * the source's answer ("order_uncertain" when the counts differ), or a security listed
+ * without a value ("unpaired").
+ */
+export type HoldingMatch = "linked" | "order" | "order_uncertain" | "unpaired";
 
 export interface Transaction {
   date: string;
