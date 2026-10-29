@@ -385,6 +385,186 @@
     "Utilities": 1.86,
     "Real Estate": 1.53
    }
+  },
+  {
+   "id": "msci-world-energy",
+   "name": "MSCI World Energy",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-energy-index.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Energy",
+   "countries": {
+    "United States": 62.97,
+    "Canada": 13.84,
+    "United Kingdom": 10.68,
+    "France": 4.58,
+    "Australia": 1.69,
+    "Other": 6.25
+   },
+   "sectors": {
+    "Energy": 100.0
+   }
+  },
+  {
+   "id": "msci-world-materials",
+   "name": "MSCI World Materials",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-materials-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Materials",
+   "countries": {
+    "United States": 39.43,
+    "Canada": 15.94,
+    "Australia": 12.14,
+    "United Kingdom": 9.07,
+    "Japan": 6.74,
+    "Other": 16.69
+   },
+   "sectors": {
+    "Materials": 100.0
+   }
+  },
+  {
+   "id": "msci-world-industrials",
+   "name": "MSCI World Industrials",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-industrials-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Industrials",
+   "countries": {
+    "United States": 55.72,
+    "Japan": 13.18,
+    "France": 6.76,
+    "Germany": 5.67,
+    "United Kingdom": 4.08,
+    "Other": 14.59
+   },
+   "sectors": {
+    "Industrials": 100.0
+   }
+  },
+  {
+   "id": "msci-world-consumer-discretionary",
+   "name": "MSCI World Consumer Discretionary",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-consumer-discretionary-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Consumer Discretionary",
+   "countries": {
+    "United States": 75.9,
+    "Japan": 10.23,
+    "France": 2.96,
+    "Switzerland": 1.67,
+    "Germany": 1.64,
+    "Other": 7.59
+   },
+   "sectors": {
+    "Consumer Discretionary": 100.0
+   }
+  },
+  {
+   "id": "msci-world-consumer-staples",
+   "name": "MSCI World Consumer Staples",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-consumer-staples-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Consumer Staples",
+   "countries": {
+    "United States": 65.63,
+    "United Kingdom": 9.99,
+    "Switzerland": 5.98,
+    "Japan": 4.47,
+    "France": 3.93,
+    "Other": 10.0
+   },
+   "sectors": {
+    "Consumer Staples": 100.0
+   }
+  },
+  {
+   "id": "msci-world-health-care",
+   "name": "MSCI World Health Care",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-health-care-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Health Care",
+   "countries": {
+    "United States": 74.04,
+    "Switzerland": 9.0,
+    "United Kingdom": 4.75,
+    "Japan": 3.37,
+    "France": 2.04,
+    "Other": 6.8
+   },
+   "sectors": {
+    "Health Care": 100.0
+   }
+  },
+  {
+   "id": "msci-world-financials",
+   "name": "MSCI World Financials",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-financials-index-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Financials",
+   "countries": {
+    "United States": 51.89,
+    "Canada": 8.35,
+    "Japan": 7.26,
+    "United Kingdom": 5.88,
+    "Australia": 3.98,
+    "Other": 22.63
+   },
+   "sectors": {
+    "Financials": 100.0
+   }
+  },
+  {
+   "id": "msci-world-information-technology",
+   "name": "MSCI World Information Technology",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-information-technology-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Information Technology",
+   "countries": {
+    "United States": 90.67,
+    "Japan": 3.52,
+    "Netherlands": 2.83,
+    "Germany": 1.06,
+    "Canada": 0.97,
+    "Other": 0.95
+   },
+   "sectors": {
+    "Information Technology": 100.0
+   }
+  },
+  {
+   "id": "msci-world-utilities",
+   "name": "MSCI World Utilities",
+   "source": "https://www.msci.com/documents/10199/255599/msci-world-utilities-index-usd-net.pdf",
+   "as_of": "SEP 30, 2026",
+   "match": "(?!)",
+   "approximate": false,
+   "sector": "Utilities",
+   "countries": {
+    "United States": 58.28,
+    "Spain": 8.95,
+    "United Kingdom": 7.22,
+    "Italy": 5.25,
+    "Germany": 4.15,
+    "Other": 16.14
+   },
+   "sectors": {
+    "Utilities": 100.0
+   }
   }
  ]
 }

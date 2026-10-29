@@ -12,7 +12,7 @@ import {
   themeOf,
   themes,
 } from "./investments";
-import type { IndexProfile, Market, MarketHolding } from "./investments";
+import type { IndexProfile, Market, MarketHolding, SecurityInfo } from "./investments";
 
 function holding(label: string, valuation: string, isin: string | null = null, extra: Partial<MarketHolding> = {}): MarketHolding {
   return {
@@ -182,6 +182,86 @@ describe("themes", () => {
     const h = holding(name, "1");
     expect(assetClass(h)).toBe(kind);
     expect(themeOf(h)).toBe(theme);
+  });
+
+  // What ESMA's register (CFI code) and the price source say, as for real securities of each kind.
+  const security = (isin: string, cfi: string, extra: Partial<SecurityInfo> = {}): SecurityInfo => ({
+    isin,
+    symbol: null,
+    currency: null,
+    quote_type: null,
+    sector: null,
+    country: null,
+    cfi,
+    ...extra,
+  });
+  const listed: [string, SecurityInfo, string, string | null][] = [
+    // UCITS funds can't own metal: a gold fund owns miners, whatever its name.
+    ["Gold Opportunities Fund", security("X1", "CIOGMS"), "equities", "miners"],
+    ["Precious Metals Fund R", security("X2", "CIXXXX"), "equities", "miners"],
+    ["Gold Producers UCITS ETF", security("X3", "CEOGES"), "equities", "miners"],
+    // Notes and certificates on gold are the metal.
+    ["Physical Gold ETC", security("X4", "EYAYFT"), "commodities", "precious_metals"],
+    ["Gold Securities", security("X5", "DAZSPR"), "commodities", "precious_metals"],
+    ["Brent Crude Oil", security("X6", "DAZSPR"), "commodities", "energy"],
+    // A closed-end trust holding silver bars, quoted like a company.
+    ["Physical Silver Trust", security("X7", "CICXXX", { quote_type: "EQUITY", sector: "Financial Services" }), "commodities", "precious_metals"],
+    // A UCITS ETF holding commodities through swaps.
+    ["Diversified Commodity Swap UCITS ETF", security("X8", "CEOGCS"), "commodities", "broad_commodities"],
+    // Company shares: their industry gives the theme.
+    ["Big Oil Corp", security("X9", "ESVUFR", { quote_type: "EQUITY", sector: "Energy", industry: "Oil & Gas Integrated" }), "equities", "energy"],
+    ["Gold Mining Co", security("X10", "ESVUFR", { quote_type: "EQUITY", sector: "Basic Materials", industry: "Gold" }), "equities", "miners"],
+    ["Logistics REIT", security("X11", "CBOIXU", { quote_type: "EQUITY", sector: "Real Estate", industry: "REIT—Industrial" }), "equities", null],
+  ];
+  it.each(listed)("%s is %s, theme %s", (name, info, kind, theme) => {
+    const h = holding(name, "1", info.isin);
+    expect(assetClass(h, info)).toBe(kind);
+    expect(themeOf(h, info)).toBe(theme);
+  });
+
+  it("leaves commodities out of the sector and country split", () => {
+    const m = market({
+      holdings: [holding("Physical Silver Trust", "100", "X7"), holding("Logistics REIT", "50", "X11")],
+      securities: {
+        X7: security("X7", "CICXXX", { quote_type: "EQUITY", sector: "Financial Services" }),
+        X11: security("X11", "CBOIXU", { quote_type: "EQUITY", sector: "Real Estate" }),
+      },
+      prices: {},
+    });
+    expect(breakdown(m, "sectors")).toEqual({ slices: [{ key: "Real Estate", value: 50 }], covered: 50, total: 50 });
+  });
+
+  it("places a company in its ISIN's country when its own isn't known", () => {
+    const m = market({
+      holdings: [holding("Some Bank", "10", "SG0000000001")],
+      securities: { SG0000000001: security("SG0000000001", "ESVUFR", { quote_type: "EQUITY" }) },
+      prices: {},
+    });
+    expect(composition(m, m.holdings[0]!, "countries")).toEqual({ Singapore: 1 });
+  });
+
+  it("puts a world sector fund in its sector, with the sector index's countries", () => {
+    const healthCare: IndexProfile = {
+      ...WORLD,
+      id: "msci-world-health-care",
+      name: "MSCI World Health Care",
+      match: "(?!)",
+      sector: "Health Care",
+      countries: { "United States": 70, Switzerland: 30 },
+      sectors: { "Health Care": 100 },
+    };
+    const m = market({
+      holdings: [holding("MSCI World Health Care UCITS ETF", "100", "X12")],
+      securities: { X12: security("X12", "CECGMS", { quote_type: "ETF" }) },
+      prices: {},
+      indices: [WORLD, healthCare],
+    });
+    const fund = m.holdings[0]!;
+    expect(composition(m, fund, "sectors")).toEqual({ "Health Care": 1 });
+    expect(composition(m, fund, "countries")).toEqual({ "United States": 0.7, Switzerland: 0.3 });
+    expect(indexOf(fund, m.indices, m.securities.X12)?.id).toBe("msci-world-health-care");
+    // The broad world fund still follows MSCI World.
+    expect(indexOf(holding("Core MSCI World", "1"), m.indices, security("X13", "CEOGES"))?.id).toBe("msci-world");
   });
 
   it("puts miners in the Materials sector and leaves their countries unknown", () => {

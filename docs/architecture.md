@@ -88,14 +88,28 @@ fees). `engine/src/kerfin_engine/market.py` collects, after each Finary sync:
   security (within 3%, after currency conversion), so a wrong share class is never used.
   Closes are adjusted for distributions. Unmatched securities are retried weekly.
 - **Exchange rates** from the ECB's daily reference rates (official, free).
-- **Company shares**: sector from the quote search, country from Wikidata (open data).
+- **What each security is**: its CFI code (ISO 10962) from ESMA's register of financial
+  instruments (FIRDS, the EU regulator's open data), looked up every 90 days. It tells
+  company shares (E…, REITs CB…) from funds (C…, with what they hold: E equities, C
+  commodities), commodity ETCs and notes (EY…, D…) and bonds (DB…).
+- **Company shares**: sector and industry from the quote search, country from Wikidata
+  (open data), else the ISIN's country.
+
+Classification (`packages/core/src/investments.ts`): a fund or note named after a resource
+holds the resource itself when the register says so (ETCs, notes, commodity funds) or its
+name says physical; otherwise it holds the producers. UCITS funds can't own metal, so a
+"gold" fund holds gold miners. A company's theme comes from its industry (oil & gas, gold,
+uranium…). Sectors follow GICS as MSCI's factsheets name them: gold miners are Materials.
+Commodities held as such have no sector or country and are left out of those breakdowns.
 
 Fund composition (country, sector) comes from the index each equity fund follows,
 matched by name: MSCI publishes every index's weights in a monthly public factsheet, and
 `scripts/update_index_profiles.py` reads them at each release into
-`engine/src/kerfin_engine/data/index_profiles.json`. US funds (S&P 500, Nasdaq) use MSCI
-North America as an approximation. Other funds count as not covered, and the page says
-which share of the money each breakdown covers.
+`engine/src/kerfin_engine/data/index_profiles.json`. A fund of one sector (Health Care,
+Technology…) is all in that sector, with the countries of MSCI World's index for that
+sector (or of its region's index). US funds (S&P 500, Nasdaq) use MSCI North America as
+an approximation. Other funds count as not covered, and the page says which share of the
+money each breakdown covers.
 
 The performance chart prices today's holdings over the period as if held unchanged,
 chaining day-to-day returns of the holdings priced on both days, in the chosen currency.

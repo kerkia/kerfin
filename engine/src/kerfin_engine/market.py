@@ -5,6 +5,10 @@
   gives for the security, so a wrong share class is never used. Closes are adjusted for
   distributions, so performance includes them.
 - Exchange rates: the ECB's daily reference rates (official, free).
+- What each security is: its CFI code (ISO 10962) from ESMA's register of financial
+  instruments (FIRDS, the EU regulator's open data), which tells company shares, funds
+  and what they hold, REITs, and commodity ETCs apart; and a company's sector and
+  industry from Yahoo Finance.
 
 Everything is fetched incrementally and kept in the vault: which securities someone holds
 is personal, even though prices aren't.
@@ -31,12 +35,14 @@ log = logging.getLogger(__name__)
 YAHOO = "https://query2.finance.yahoo.com"
 ECB = "https://data-api.ecb.europa.eu/service/data/EXR"
 WIKIDATA = "https://query.wikidata.org/sparql"
+FIRDS = "https://registers.esma.europa.eu/solr/esma_registers_firds/select"
 TIMEOUT = 30
 HISTORY_YEARS = 15
 # Currencies offered for display, fetched even when no security is quoted in them.
 DISPLAY_CURRENCIES = ("USD", "GBP", "CHF")
 PRICE_TOLERANCE = Decimal("0.03")  # a candidate's latest price may differ by 3% (dates differ)
 RECHECK_UNMATCHED_DAYS = 7
+RECLASSIFY_DAYS = 90
 SEARCH_TYPES = {"ETF", "MUTUALFUND", "EQUITY"}
 
 
@@ -46,6 +52,7 @@ class Candidate:
     name: str
     quote_type: str
     sector: str | None = None  # company shares only
+    industry: str | None = None  # company shares only
 
 
 def _session() -> requests.Session:
@@ -73,10 +80,26 @@ class Sources:
                 quote.get("longname") or quote.get("shortname") or "",
                 quote["quoteType"],
                 quote.get("sector") or None,
+                quote.get("industry") or None,
             )
             for quote in response.json().get("quotes", [])
             if quote.get("quoteType") in SEARCH_TYPES and quote.get("symbol")
         ]
+
+    def instrument_code(self, isin: str) -> str | None:
+        """The CFI code ESMA's register gives the instrument, or None if it isn't listed."""
+        if not isin.isalnum():
+            return None
+        response = self._session.get(
+            FIRDS,
+            params={"q": f"isin:{isin}", "wt": "json", "rows": 5, "fl": "isin,gnr_cfi_code"},
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        for doc in response.json().get("response", {}).get("docs", []):
+            if doc.get("isin") == isin and doc.get("gnr_cfi_code"):
+                return str(doc["gnr_cfi_code"])
+        return None
 
     def company_country(self, isin: str) -> str | None:
         """Where a listed company is based, from Wikidata (an open knowledge base), by ISIN."""
@@ -231,6 +254,12 @@ class MarketData:
                 country,
             )
             known = self._store.security(isin)
+        if known and (
+            known["classified_at"] is None
+            or datetime.fromisoformat(known["classified_at"])
+            < datetime.now(UTC) - timedelta(days=RECLASSIFY_DAYS)
+        ):
+            self._classify(isin, known)
         if not known or not known["symbol"]:
             return False
         last = self._store.last_price_date(isin)
@@ -243,6 +272,22 @@ class MarketData:
             _, points = self._sources.history(known["symbol"], start)
             self._store.save_prices(isin, points)
         return True
+
+    def _classify(self, isin: str, known: dict[str, Any]) -> None:
+        """Looks up what the security is; on a network error, it's tried again next time."""
+        try:
+            cfi = self._sources.instrument_code(isin) or ""
+            industry = sector = None
+            # Company shares (CFI E..., but EY are certificates such as commodity ETCs).
+            if known["quote_type"] == "EQUITY" or (cfi.startswith("E") and not cfi.startswith("EY")):
+                found = [c for c in self._sources.search(isin) if c.quote_type == "EQUITY"]
+                match = next((c for c in found if c.symbol == known["symbol"]), found[0] if found else None)
+                if match:
+                    industry, sector = match.industry, match.sector
+        except (requests.RequestException, ValueError, KeyError) as error:
+            log.warning("Classification of one security failed: %s", type(error).__name__)
+            return
+        self._store.save_classification(isin, cfi, industry, sector)
 
     def _resolve(self, holding: dict[str, Any], today: date) -> tuple[Candidate | None, str | None]:
         """The candidate whose latest price matches the source's price for this security."""

@@ -56,6 +56,28 @@ INDICES = [
 
 SINGLE_COUNTRY = {"msci-france": "France", "msci-japan": "Japan", "msci-china": "China"}
 
+# MSCI World's sector indices, for the countries of sector funds (which Kerfin recognises
+# by name; their factsheets have no sector table, being all one sector).
+SECTOR_INDICES = [
+    ("msci-world-energy", "Energy", "msci-world-energy-index.pdf"),
+    ("msci-world-materials", "Materials", "msci-world-materials-index-usd-net.pdf"),
+    ("msci-world-industrials", "Industrials", "msci-world-industrials-index-usd-net.pdf"),
+    (
+        "msci-world-consumer-discretionary",
+        "Consumer Discretionary",
+        "msci-world-consumer-discretionary-index-usd-net.pdf",
+    ),
+    ("msci-world-consumer-staples", "Consumer Staples", "msci-world-consumer-staples-index-usd-net.pdf"),
+    ("msci-world-health-care", "Health Care", "msci-world-health-care-index-usd-net.pdf"),
+    ("msci-world-financials", "Financials", "msci-world-financials-index-net.pdf"),
+    (
+        "msci-world-information-technology",
+        "Information Technology",
+        "msci-world-information-technology-index-usd-net.pdf",
+    ),
+    ("msci-world-utilities", "Utilities", "msci-world-utilities-index-usd-net.pdf"),
+]
+
 WEIGHT = re.compile(r"([A-Z][A-Za-z.&,' -]+?) (\d+(?:\.\d+)?)%")
 
 
@@ -73,7 +95,9 @@ def weights(text: str, title: str) -> dict[str, float]:
     return found
 
 
-def profile(index_id: str, name: str, file: str, pattern: str, approximate: bool) -> dict[str, object]:
+def profile(
+    index_id: str, name: str, file: str, pattern: str, approximate: bool, sector: str | None = None
+) -> dict[str, object]:
     request = urllib.request.Request(BASE + file, headers={"User-Agent": "Kerfin index profiles"})
     with urllib.request.urlopen(request, timeout=60) as response:
         text = "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(response.read())).pages)
@@ -85,11 +109,14 @@ def profile(index_id: str, name: str, file: str, pattern: str, approximate: bool
         "as_of": as_of.group(1) if as_of else None,
         "match": pattern,
         "approximate": approximate,
+        **({"sector": sector} if sector else {}),
         # Single-country indices have no country table.
         "countries": (
-            weights(text, "COUNTRY WEIGHTS") if "COUNTRY WEIGHTS" in text else {SINGLE_COUNTRY[index_id]: 100.0}
+            weights(text, "COUNTRY WEIGHTS")
+            if "COUNTRY WEIGHTS" in text
+            else {SINGLE_COUNTRY[index_id]: 100.0}
         ),
-        "sectors": weights(text, "SECTOR WEIGHTS"),
+        "sectors": {sector: 100.0} if sector else weights(text, "SECTOR WEIGHTS"),
     }
 
 
@@ -98,9 +125,13 @@ def main() -> int:
     if OUT.exists():
         previous = {p["id"]: p for p in json.loads(OUT.read_text(encoding="utf-8"))["indices"]}
     profiles, failed = [], []
-    for index_id, name, file, pattern, approximate in INDICES:
+    wanted = [(*entry, None) for entry in INDICES] + [
+        (index_id, f"MSCI World {sector}", file, "(?!)", False, sector)  # never matched by name
+        for index_id, sector, file in SECTOR_INDICES
+    ]
+    for index_id, name, file, pattern, approximate, sector in wanted:
         try:
-            profiles.append(profile(index_id, name, file, pattern, approximate))
+            profiles.append(profile(index_id, name, file, pattern, approximate, sector))
         except Exception as error:  # noqa: BLE001 - keep the last good weights of this index
             failed.append(f"{index_id}: {error}")
             if index_id in previous:

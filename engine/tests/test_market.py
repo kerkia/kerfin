@@ -33,8 +33,11 @@ class FakeSources:
                 Candidate("FUND-B", "Some Fund F", "MUTUALFUND"),
             ],
             "IE00B4L5Y983": [Candidate("IWDA.L", "iShares Core MSCI World", "ETF")],
-            "US0378331005": [Candidate("AAPL", "Apple Inc.", "EQUITY", "Technology")],
+            "US0378331005": [Candidate("AAPL", "Apple Inc.", "EQUITY", "Technology", "Consumer Electronics")],
         }.get(query, [])
+
+    def instrument_code(self, isin: str) -> str | None:
+        return {"US0378331005": "ESVUFR", "IE00B4L5Y983": "CEOGES"}.get(isin)
 
     def history(self, symbol: str, start: date) -> tuple[str, list[tuple[date, Decimal]]]:
         self.history_calls.append((symbol, start))
@@ -120,3 +123,25 @@ def test_company_shares_get_their_sector_and_country() -> None:
         "Technology",
         "United States",
     )
+    assert (security["industry"], security["cfi"]) == ("Consumer Electronics", "ESVUFR")
+
+
+def test_funds_get_their_register_code_even_without_prices() -> None:
+    store = store_with(
+        Holding("MSCI World", Decimal("1000"), "EUR", isin="IE00B4L5Y983", unit_value=Decimal("100")),
+        Holding("Some Fund A", Decimal("500"), "EUR", isin="FR0000000001", unit_value=Decimal("50")),
+    )
+    MarketData(store, FakeSources()).refresh(TODAY)  # type: ignore[arg-type]
+    assert store.security("IE00B4L5Y983")["cfi"] == "CEOGES"
+    # Not in the register: marked as looked up, so it isn't asked again at every refresh.
+    unlisted = store.security("FR0000000001")
+    assert unlisted["cfi"] == "" and unlisted["classified_at"] is not None
+
+
+def test_classification_survives_a_new_price_match() -> None:
+    store = store_with(
+        Holding("Apple", Decimal("500"), "EUR", isin="US0378331005", unit_value=Decimal("227.27"))
+    )
+    MarketData(store, FakeSources()).refresh(TODAY)  # type: ignore[arg-type]
+    store.save_security("US0378331005", "AAPL", "USD", "EQUITY", "Technology", "United States")
+    assert store.security("US0378331005")["industry"] == "Consumer Electronics"

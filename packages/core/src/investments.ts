@@ -24,6 +24,8 @@ export interface SecurityInfo {
   quote_type: string | null; // EQUITY, ETF, MUTUALFUND
   sector: string | null; // company shares
   country: string | null; // company shares
+  industry?: string | null; // company shares
+  cfi?: string | null; // ISO 10962 code from ESMA's register; "" when not listed there
 }
 
 export interface IndexProfile {
@@ -33,6 +35,7 @@ export interface IndexProfile {
   as_of: string | null;
   match: string; // regular expression on the fund's name
   approximate: boolean;
+  sector?: string; // a sector index (MSCI World Health Care...): matched by sector, not by name
   countries: Record<string, number>; // percent
   sectors: Record<string, number>; // percent
 }
@@ -69,7 +72,7 @@ const CLASS_PATTERNS: [RegExp, AssetClass][] = [
   [/equity|equities|\bactions?\b|stock|share|msci|s&p|nasdaq|stoxx|cac|ftse|dow|nikkei|topix|small.?cap|\betf\b/i, "equities"],
 ];
 
-/** What a fund is specifically about, when it is about a resource. */
+/** What a holding is specifically about, when it is about a resource. */
 export const THEMES = [
   "precious_metals",
   "miners",
@@ -83,20 +86,31 @@ export const THEMES = [
 ] as const;
 export type Theme = (typeof THEMES)[number];
 
-// Tried in order: the most specific first, companies before the resource they extract.
+// The resource a fund's name is about, the most specific first. Whether the fund owns the
+// resource or the companies producing it is decided by what the fund is (see holdsResource):
+// gold here stands for gold itself and gold miners alike.
 const THEME_PATTERNS: [RegExp, Theme][] = [
   [/rare.earth|terres? rares|strategic metal|critical (metal|material|mineral)|lithium|battery (metal|tech)/i, "rare_earths"],
   [/uranium/i, "uranium"],
   [/clean energy|renewable|[ée]nergies? (renouvelable|propre)|solar|wind energy|hydrogen/i, "clean_energy"],
-  [/miners?\b|mining|gold ?bugs|mines? d'or|aurif|junior gold/i, "miners"],
-  [/\bgold\b|\bsilver\b|platinum|palladium|precious metal|m[ée]taux pr[ée]cieux|\bor physique\b/i, "precious_metals"],
+  [/\bgold\b|\bsilver\b|platinum|palladium|precious metal|m[ée]taux pr[ée]cieux|\bor physique\b|mines? d'or|aurif|gold ?bugs/i, "precious_metals"],
   [/\boil\b|brent|\bwti\b|crude|p[ée]trole|natural gas|gaz naturel|\benergy\b|[ée]nergie/i, "energy"],
-  [/copper|cuivre|nickel|alumin|\bzinc\b|industrial metal|base metal|m[ée]taux industriels/i, "industrial_metals"],
+  [/miners?\b|mining|mini[eè]res?\b|copper|cuivre|nickel|alumin|\bzinc\b|industrial metal|base metal|m[ée]taux industriels/i, "industrial_metals"],
   [/(?<!ex[- ]?)agri|grains?\b|wheat|livestock/i, "agriculture"],
   [/commodit|mati[èe]res premi[èe]res/i, "broad_commodities"],
 ];
 
-// Themes whose funds own the resource (or contracts on it) unless they hold companies.
+// A company's theme, from its industry (Yahoo Finance's names, as Morningstar's).
+const INDUSTRY_THEMES: [RegExp, Theme][] = [
+  [/^gold$|precious metals/i, "miners"],
+  [/uranium/i, "uranium"],
+  [/^oil & gas|coal/i, "energy"],
+  [/copper|alumin|steel|industrial metals/i, "industrial_metals"],
+  [/solar|renewable/i, "clean_energy"],
+  [/agricultural|farm products/i, "agriculture"],
+];
+
+// Themes whose funds may own the resource itself (or contracts on it).
 const RESOURCE_THEMES: ReadonlySet<Theme> = new Set([
   "precious_metals",
   "energy",
@@ -105,7 +119,9 @@ const RESOURCE_THEMES: ReadonlySet<Theme> = new Set([
   "broad_commodities",
 ]);
 const COMPANY_HINT = /equity|equities|\bactions?\b|msci|s&p|stoxx|ftse|sector|producers|companies|miners?\b|mining/i;
-const PHYSICAL_HINT = /physical|physique|\betc\b/i;
+// UCITS funds can't own commodities: a fund about gold owns gold miners.
+const FUND_HINT = /\bfunds?\b|\bfonds\b|sicav|\bfcp\b|ucits/i;
+const PHYSICAL_HINT = /physical|physique|\betc\b|\betn\b/i;
 // The sector of funds that hold companies of one industry.
 const THEME_SECTORS: Partial<Record<Theme, string>> = {
   miners: "Materials",
@@ -114,22 +130,87 @@ const THEME_SECTORS: Partial<Record<Theme, string>> = {
   uranium: "Energy",
   energy: "Energy",
 };
+// Funds of one sector, by name (energy and materials funds are found by their theme).
+const SECTOR_PATTERNS: [RegExp, string][] = [
+  [/health ?care|sant[ée]|pharma|biotech|m[ée]dical/i, "Health Care"],
+  [/information tech|\btech(nology|nologies)?\b|technolog|semiconductor|semi-?conducteur|software|logiciel/i, "Information Technology"],
+  [/financials|\bbanks?\b|banques?|valeurs financi[eè]res/i, "Financials"],
+  [/consumer discretionary|luxury|\bluxe\b/i, "Consumer Discretionary"],
+  [/consumer staples|biens de consommation de base/i, "Consumer Staples"],
+  [/\bindustrials\b|valeurs industrielles/i, "Industrials"],
+  [/\butilities\b|services aux collectivit/i, "Utilities"],
+  [/communication services|t[ée]l[ée]com/i, "Communication Services"],
+  [/\bmaterials\b|mat[ée]riaux/i, "Materials"],
+];
+// Indices spanning the world: a world sector fund is described by the sector's world index.
+const WORLDWIDE = new Set(["msci-world", "msci-acwi", "msci-acwi-imi"]);
 
-export function themeOf(holding: MarketHolding, security?: SecurityInfo): Theme | null {
-  if (security?.quote_type === "EQUITY") return null; // a company share, not a fund
-  const text = `${holding.label} ${holding.security_type ?? ""}`;
+type Nature = "company" | "fund" | "note" | "bond";
+
+function describe(holding: MarketHolding): string {
+  return `${holding.label} ${holding.security_type ?? ""}`;
+}
+
+/**
+ * What a holding is: from its CFI code in ESMA's register (the EU's official reference) when
+ * listed there, else from what the price source and Finary say. Null when unknown.
+ */
+function natureOf(holding: MarketHolding, security?: SecurityInfo): Nature | null {
+  const cfi = security?.cfi ?? "";
+  if (cfi.startsWith("DB")) return "bond";
+  if (cfi.startsWith("D") || cfi.startsWith("EY")) return "note"; // ETCs, ETNs, certificates
+  if (cfi.startsWith("CB") || cfi.startsWith("E")) return "company"; // CB: real estate investment trusts
+  if (cfi.startsWith("C")) return "fund";
+  const type = holding.security_type?.toLowerCase();
+  if (security?.quote_type === "EQUITY" || type === "equity" || type === "stock") {
+    // Physical metal trusts are quoted like companies.
+    return PHYSICAL_HINT.test(holding.label) ? "fund" : "company";
+  }
+  if (security?.quote_type === "ETF" || security?.quote_type === "MUTUALFUND" || type === "etf" || type === "fund") {
+    return "fund";
+  }
+  return null;
+}
+
+function nameTheme(holding: MarketHolding): Theme | null {
+  const text = describe(holding);
   return THEME_PATTERNS.find(([pattern]) => pattern.test(text))?.[1] ?? null;
 }
 
-export function assetClass(holding: MarketHolding, security?: SecurityInfo): AssetClass {
-  if (security?.quote_type === "EQUITY") return "equities";
-  const text = `${holding.label} ${holding.security_type ?? ""}`;
-  // A fund of gold miners holds companies (equities); a physical gold ETC holds metal.
-  const theme = themeOf(holding, security);
-  if (theme && RESOURCE_THEMES.has(theme)) {
-    return COMPANY_HINT.test(text) && !PHYSICAL_HINT.test(text) ? "equities" : "commodities";
+/** Whether a fund or note about `theme` owns the resource itself (or contracts on it) rather than companies. */
+function holdsResource(holding: MarketHolding, security: SecurityInfo | undefined, theme: Theme): boolean {
+  const text = describe(holding);
+  const cfi = security?.cfi ?? "";
+  if (PHYSICAL_HINT.test(text)) return true;
+  const nature = natureOf(holding, security);
+  if (nature === "note") return true;
+  // A fund's CFI code says what it holds: C for commodities (letter 5).
+  if (cfi.startsWith("C")) return cfi[4] === "C";
+  if (cfi) return false;
+  // Not in the register.
+  if (theme === "broad_commodities") return !COMPANY_HINT.test(text);
+  if (!RESOURCE_THEMES.has(theme)) return false;
+  return !(COMPANY_HINT.test(text) || FUND_HINT.test(text) || security?.quote_type === "MUTUALFUND");
+}
+
+/** What a holding is about, when it is about a resource: the resource itself, or its producers. */
+export function themeOf(holding: MarketHolding, security?: SecurityInfo): Theme | null {
+  if (natureOf(holding, security) === "company") {
+    const industry = security?.industry ?? "";
+    return (industry && INDUSTRY_THEMES.find(([pattern]) => pattern.test(industry))?.[1]) || null;
   }
-  if (theme) return PHYSICAL_HINT.test(text) ? "commodities" : "equities";
+  const theme = nameTheme(holding);
+  if (!theme || holdsResource(holding, security, theme)) return theme;
+  return theme === "precious_metals" ? "miners" : theme;
+}
+
+export function assetClass(holding: MarketHolding, security?: SecurityInfo): AssetClass {
+  const nature = natureOf(holding, security);
+  if (nature === "company") return "equities";
+  if (nature === "bond") return "bonds";
+  const theme = nameTheme(holding);
+  if (theme) return holdsResource(holding, security, theme) ? "commodities" : "equities";
+  const text = describe(holding);
   for (const [pattern, kind] of CLASS_PATTERNS) if (pattern.test(text)) return kind;
   return security?.quote_type === "ETF" ? "equities" : "other";
 }
@@ -148,14 +229,47 @@ export function themes(market: Market): { slices: { key: Theme; value: number }[
   return { slices: [...totals].map(([key, value]) => ({ key, value })).sort((a, b) => b.value - a.value), total };
 }
 
-/** The index a fund follows or resembles, from its name (equity funds only). */
+interface FundProfile {
+  index: IndexProfile | null; // the index describing it, shown in the table
+  sectors: Record<string, number> | null; // fractions adding up to 1
+  countries: Record<string, number> | null;
+}
+
+function fractions(weights: Record<string, number>): Record<string, number> {
+  const sum = Object.values(weights).reduce((s, w) => s + w, 0) || 100;
+  return Object.fromEntries(Object.entries(weights).map(([key, weight]) => [key, weight / sum]));
+}
+
+/**
+ * What an equity fund is made of: a fund of one sector (by its theme or name) is all in that
+ * sector, with the countries of the sector's world index (or of its region's index); other
+ * funds follow the index their name names. Funds of one industry's companies (gold
+ * miners...) are in that industry's sector; their countries aren't known.
+ */
+function fundProfile(holding: MarketHolding, indices: IndexProfile[], security?: SecurityInfo): FundProfile {
+  const none = { index: null, sectors: null, countries: null };
+  if (natureOf(holding, security) === "company" || assetClass(holding, security) !== "equities") return none;
+  const broad = indices.find((index) => !index.sector && new RegExp(index.match, "i").test(holding.label)) ?? null;
+  const theme = themeOf(holding, security);
+  const sector = theme ? THEME_SECTORS[theme] : SECTOR_PATTERNS.find(([pattern]) => pattern.test(holding.label))?.[1];
+  if (!sector) {
+    if (theme || !broad) return none;
+    return { index: broad, sectors: fractions(broad.sectors), countries: fractions(broad.countries) };
+  }
+  // Mining companies are spread unlike the world's materials companies: no countries.
+  if (theme && theme !== "energy") return { ...none, sectors: { [sector]: 1 } };
+  const regional = broad && !WORLDWIDE.has(broad.id) ? { ...broad, approximate: true } : null;
+  const index = regional ?? indices.find((i) => i.sector === sector) ?? null;
+  return { index, sectors: { [sector]: 1 }, countries: index ? fractions(index.countries) : null };
+}
+
+/** The index a fund follows or resembles (equity funds only). */
 export function indexOf(
   holding: MarketHolding,
   indices: IndexProfile[],
   security?: SecurityInfo,
 ): IndexProfile | null {
-  if (security?.quote_type === "EQUITY" || assetClass(holding, security) !== "equities") return null;
-  return indices.find((index) => new RegExp(index.match, "i").test(holding.label)) ?? null;
+  return fundProfile(holding, indices, security).index;
 }
 
 // The sources' sector names, as the MSCI factsheets name them.
@@ -176,7 +290,7 @@ const SECTOR_NAMES: Record<string, string> = {
 export interface Breakdown {
   slices: { key: string; value: number }[]; // value in euros, largest first
   covered: number; // euros whose composition is known
-  total: number; // euros of all holdings considered
+  total: number; // euros of all holdings considered (commodities have no country or sector)
 }
 
 /**
@@ -190,6 +304,8 @@ export function breakdown(market: Market, dimension: "countries" | "sectors"): B
   for (const holding of market.holdings) {
     const value = amount(holding.valuation);
     if (value <= 0) continue;
+    const security = holding.isin ? market.securities[holding.isin] : undefined;
+    if (assetClass(holding, security) === "commodities") continue;
     total += value;
     const shares = composition(market, holding, dimension);
     if (!shares) continue;
@@ -200,9 +316,23 @@ export function breakdown(market: Market, dimension: "countries" | "sectors"): B
   return { slices, covered, total };
 }
 
+const REGIONS = new Intl.DisplayNames(["en"], { type: "region" });
+
+/** The country an ISIN was issued in (its first two letters), where a company is registered. */
+function isinCountry(isin: string | null): string | null {
+  const code = isin?.slice(0, 2) ?? "";
+  if (!/^[A-Z]{2}$/.test(code) || code === "XS" || code === "EU") return null; // international issues
+  try {
+    const name = REGIONS.of(code);
+    return name && name !== code ? name : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * What one holding is made of, by country or sector, as fractions adding up to 1: a
- * company share is all in its own; an index fund follows its index. Null when unknown.
+ * company share is all in its own; a fund follows its sector or index. Null when unknown.
  */
 export function composition(
   market: Market,
@@ -210,21 +340,14 @@ export function composition(
   dimension: "countries" | "sectors",
 ): Record<string, number> | null {
   const security = holding.isin ? market.securities[holding.isin] : undefined;
-  if (security?.quote_type === "EQUITY") {
+  if (natureOf(holding, security) === "company") {
     const key =
-      dimension === "countries" ? security.country : security.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
+      dimension === "countries"
+        ? (security?.country ?? isinCountry(holding.isin))
+        : security?.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
     return key ? { [key]: 1 } : null;
   }
-  // Funds of one industry's companies (gold miners...) sit in that industry's sector; their
-  // countries aren't known.
-  const theme = themeOf(holding, security);
-  const themeSector = theme && assetClass(holding, security) === "equities" ? THEME_SECTORS[theme] : undefined;
-  if (themeSector) return dimension === "sectors" ? { [themeSector]: 1 } : null;
-  const index = indexOf(holding, market.indices, security);
-  if (!index) return null;
-  const weights = index[dimension];
-  const sum = Object.values(weights).reduce((s, w) => s + w, 0) || 100;
-  return Object.fromEntries(Object.entries(weights).map(([key, weight]) => [key, weight / sum]));
+  return fundProfile(holding, market.indices, security)[dimension];
 }
 
 /** Holdings by asset class, in euros, largest first. */

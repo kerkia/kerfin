@@ -77,7 +77,10 @@ CREATE TABLE securities (
     checked_at TEXT NOT NULL,
     quote_type TEXT,               -- EQUITY, ETF, MUTUALFUND
     sector TEXT,                   -- company shares: the source's sector name
-    country TEXT                   -- company shares: where the company is based
+    country TEXT,                  -- company shares: where the company is based
+    industry TEXT,                 -- company shares: the source's industry name
+    cfi TEXT,                      -- ISO 10962 code from ESMA's register ('' when not listed)
+    classified_at TEXT             -- when `industry` and `cfi` were looked up
 );
 CREATE TABLE prices (
     isin TEXT NOT NULL,
@@ -108,7 +111,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -132,6 +135,11 @@ MIGRATIONS = {
     3: ("UPDATE accounts SET kind_override = NULL WHERE kind_override = 'card' AND kind <> 'card'",),
     4: ("ALTER TABLE holdings ADD COLUMN match TEXT",),
     5: ("ALTER TABLE accounts ADD COLUMN label_override TEXT",),
+    6: (
+        "ALTER TABLE securities ADD COLUMN industry TEXT",
+        "ALTER TABLE securities ADD COLUMN cfi TEXT",
+        "ALTER TABLE securities ADD COLUMN classified_at TEXT",
+    ),
 }
 
 
@@ -464,12 +472,23 @@ class Store:
         sector: str | None = None,
         country: str | None = None,
     ) -> None:
+        # The classification is looked up separately and kept.
         with self.transaction() as db:
             db.execute(
-                "INSERT OR REPLACE INTO securities"
-                " (isin, symbol, currency, checked_at, quote_type, sector, country)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO securities (isin, symbol, currency, checked_at, quote_type, sector, country)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(isin) DO UPDATE SET symbol = excluded.symbol,"
+                " currency = excluded.currency, checked_at = excluded.checked_at,"
+                " quote_type = excluded.quote_type, sector = excluded.sector, country = excluded.country",
                 (isin, symbol, currency, _now(), quote_type, sector, country),
+            )
+
+    def save_classification(self, isin: str, cfi: str, industry: str | None, sector: str | None) -> None:
+        """What a security is (its CFI code) and, for a company, its industry and sector."""
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE securities SET cfi = ?, industry = ?, sector = COALESCE(?, sector), classified_at = ?"
+                " WHERE isin = ?",
+                (cfi, industry, sector, _now(), isin),
             )
 
     def last_price_date(self, isin: str) -> str | None:
