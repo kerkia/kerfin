@@ -32,12 +32,14 @@ export function BarList({
   slices,
   label,
   sharesOnly,
+  format = (value: number) => money(value, "EUR", { maximumFractionDigits: 0 }),
   selected,
   onSelect,
 }: {
   slices: Slice[];
   label: (key: string) => string;
   sharesOnly?: boolean; // percentages without amounts
+  format?: (value: number) => string; // the values, when not euros
 } & Pickable) {
   const max = Math.max(...slices.map((s) => s.value), 1);
   return (
@@ -47,7 +49,7 @@ export function BarList({
           {...pickProps(slice.key, { selected, onSelect }, "bar-item")}
           role={onSelect ? "button" : "row"}
           key={slice.key}
-          title={`${label(slice.key)}: ${money(slice.value)} (${percent(slice.share)})`}
+          title={`${label(slice.key)}: ${format(slice.value)} (${percent(slice.share)})`}
         >
           <span role="cell" className="secondary" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
             {label(slice.key)}
@@ -56,7 +58,7 @@ export function BarList({
             <span className="bar" style={{ width: `${(slice.value / max) * 100}%` }} />
           </span>
           <span role="cell" className="num small">
-            {!sharesOnly && <>{money(slice.value, "EUR", { maximumFractionDigits: 0 })} </>}
+            {!sharesOnly && <>{format(slice.value)} </>}
             <span className={sharesOnly ? undefined : "muted"}>{percent(slice.share)}</span>
           </span>
         </div>

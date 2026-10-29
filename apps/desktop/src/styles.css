@@ -1024,6 +1024,11 @@ th:hover .sort-mark.idle {
   border-top: 1px solid var(--border);
 }
 
+/* Rows left out: accounts not picked, transactions not counted */
+.table tr.dimmed-row td {
+  opacity: 0.5;
+}
+
 /* Budget: a transaction's category, changed in place */
 .category-pick {
   width: auto;

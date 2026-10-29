@@ -16,6 +16,7 @@ interface Changes {
   feeRate?: string; // percent, as typed
   balance?: string;
   hidden?: boolean;
+  institution?: string; // accounts entered by hand
 }
 
 export function AccountEditor({ account, onClose }: { account: Account; onClose: () => void }) {
@@ -48,6 +49,7 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
         // Picking the detected kind again goes back to following the source.
         ...(changes.kind !== undefined ? { kind: changes.kind === account.kind_detected ? "auto" : changes.kind } : {}),
         ...(changes.insurer !== undefined ? { insurer: changes.insurer.trim() } : {}),
+        ...(manual && changes.institution?.trim() ? { institution_name: changes.institution.trim() } : {}),
         // An insurer only suggested so far is saved as the user's once they save.
         ...(changes.insurer === undefined && !account.insurer && account.insurer_suggested && INSURED_KINDS.has(kind)
           ? { insurer: account.insurer_suggested }
@@ -78,6 +80,17 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
           <label htmlFor={`label-${account.id}`}>{t("detail.rename")}</label>
           <input id={`label-${account.id}`} className="input" value={label} onChange={(e) => change({ label: e.target.value })} />
         </div>
+        {manual && (
+          <div className="field" style={{ flex: 1.4 }}>
+            <label htmlFor={`institution-${account.id}`}>{t("add.institution")}</label>
+            <input
+              id={`institution-${account.id}`}
+              className="input"
+              value={changes.institution ?? account.institution_name ?? ""}
+              onChange={(e) => change({ institution: e.target.value })}
+            />
+          </div>
+        )}
         <div className="field" style={{ flex: 1 }}>
           <label htmlFor={`kind-${account.id}`}>{t("detail.kind")}</label>
           <select

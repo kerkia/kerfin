@@ -14,6 +14,7 @@ interface Choice {
   target: string; // "new", "skip" or an account id
   label: string; // a new account's name
   kind: AccountKind;
+  institution: string;
 }
 
 export function ImportFile({ onBack, onDone }: { onBack: () => void; onDone: () => void }) {
@@ -35,7 +36,7 @@ export function ImportFile({ onBack, onDone }: { onBack: () => void; onDone: () 
       setFound(accounts);
       setChoices(
         Object.fromEntries(
-          accounts.map((a) => [a.number, { target: a.target ?? "new", label: a.label, kind: a.kind }]),
+          accounts.map((a) => [a.number, { target: a.target ?? "new", label: a.label, kind: a.kind, institution: a.institution }]),
         ),
       );
     } catch (e) {
@@ -57,7 +58,9 @@ export function ImportFile({ onBack, onDone }: { onBack: () => void; onDone: () 
         data,
         Object.fromEntries(entries.map(([number, c]) => [number, c.target])),
         Object.fromEntries(
-          entries.filter(([, c]) => c.target === "new").map(([number, c]) => [number, { label: c.label.trim(), kind: c.kind }]),
+          entries
+            .filter(([, c]) => c.target === "new")
+            .map(([number, c]) => [number, { label: c.label.trim(), kind: c.kind, institution: c.institution.trim() }]),
         ),
       );
       await refresh();
@@ -93,7 +96,7 @@ export function ImportFile({ onBack, onDone }: { onBack: () => void; onDone: () 
                 <div key={account.number} className="import-row">
                   <div>
                     <div>
-                      <strong>{account.label}</strong> <span className="muted small">{account.institution}</span>
+                      <strong>{account.label}</strong>
                     </div>
                     <div className="muted small">
                       {t("import.count", { n: account.count })} · {longDate(account.first)} – {longDate(account.last)} ·{" "}
@@ -126,6 +129,14 @@ export function ImportFile({ onBack, onDone }: { onBack: () => void; onDone: () 
                           value={choice.label}
                           maxLength={100}
                           onChange={(e) => choose(account.number, { label: e.target.value })}
+                        />
+                        <input
+                          className="input compact"
+                          aria-label={t("add.institution")}
+                          title={t("add.institution")}
+                          value={choice.institution}
+                          maxLength={100}
+                          onChange={(e) => choose(account.number, { institution: e.target.value })}
                         />
                         <select
                           className="input compact"

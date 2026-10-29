@@ -18,8 +18,10 @@ export interface CategoryDef {
 /** Money moving between the user's own accounts (savings, a card's bill): not spending. */
 export const TRANSFERS = "transfers";
 export const OTHER = "other";
-/** Categories the rules rely on: they can be renamed, not removed. */
-export const REQUIRED_CATEGORIES: ReadonlySet<string> = new Set([TRANSFERS, OTHER]);
+/** Transactions the user leaves out of the budget altogether. */
+export const IGNORED = "ignored";
+/** Categories Kerfin relies on: they can be renamed, not removed. */
+export const REQUIRED_CATEGORIES: ReadonlySet<string> = new Set([TRANSFERS, IGNORED, OTHER]);
 
 export const DEFAULT_CATEGORIES: CategoryDef[] = [
   { key: "income", kind: "income" },
@@ -42,8 +44,18 @@ export const DEFAULT_CATEGORIES: CategoryDef[] = [
     "gifts",
   ].map((key): CategoryDef => ({ key, kind: "spending" })),
   { key: TRANSFERS, kind: "excluded" },
+  { key: IGNORED, kind: "excluded" },
   { key: OTHER, kind: "spending" },
 ];
+
+/** The user's list with the categories Kerfin relies on, should a saved list lack some. */
+export function withRequired(categories: CategoryDef[]): CategoryDef[] {
+  const missing = DEFAULT_CATEGORIES.filter((c) => REQUIRED_CATEGORIES.has(c.key) && !categories.some((m) => m.key === c.key));
+  if (!missing.length) return categories;
+  // "Other" stays last.
+  const all = [...categories, ...missing];
+  return [...all.filter((c) => c.key !== OTHER), ...all.filter((c) => c.key === OTHER)];
+}
 
 /** Where a transaction's category comes from. */
 export type CategoryOrigin = "yours" | "transfer" | "kerfin" | "bank" | "none";

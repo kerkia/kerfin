@@ -21,7 +21,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,7 +44,6 @@ log = logging.getLogger(__name__)
 TAURI_ORIGINS = {"http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"}
 DEFAULT_AUTO_LOCK_MINUTES = 15
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
-BUDGET_DAYS = 400  # thirteen months: the last twelve, and the one before to compare
 # Environment variables that would let another program make us trust its certificates.
 CA_OVERRIDES = ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR")
 
@@ -462,10 +461,10 @@ def market_data(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
 
 @route("GET", "/api/transactions")
 def all_transactions(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
-    """Every account's transactions over the last thirteen months, for the budget."""
+    """Every account's transactions, for the budget."""
     store, _sync = app.unlocked()
     return {
-        "transactions": store.all_transactions(date.today() - timedelta(days=BUDGET_DAYS)),
+        "transactions": store.all_transactions(date.min),
         "notices": store.transactions_notices(),
         "rules": store.category_rules(),
         "categories": store.categories(),
@@ -474,7 +473,7 @@ def all_transactions(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
 
 CATEGORY_KINDS = {"spending", "income", "excluded"}
 # Categories the rules rely on (see packages/core/src/categories.ts).
-REQUIRED_CATEGORIES = {"transfers", "other"}
+REQUIRED_CATEGORIES = {"transfers", "ignored", "other"}
 
 
 @route("PUT", "/api/categories")
@@ -562,16 +561,17 @@ def import_export(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
     targets = body.get("targets")
     if not isinstance(targets, dict):
         raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "targets")
-    # "new_accounts": {number: {"label", "kind"}}, the user's name and kind for new accounts.
+    # "new_accounts": {number: {"label", "kind", "institution"}}: the user's choices for new accounts.
     new_accounts = {}
     for number, given in (body.get("new_accounts") or {}).items():
         try:
             label, kind = str(given["label"]).strip(), AccountKind(given["kind"])
-        except (KeyError, TypeError, ValueError):
+            institution = str(given.get("institution") or "").strip()
+        except (AttributeError, KeyError, TypeError, ValueError):
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "new_accounts") from None
-        if not label or len(label) > 100:
+        if not label or len(label) > 100 or len(institution) > 100:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "new_accounts")
-        new_accounts[str(number)] = (label, kind)
+        new_accounts[str(number)] = bank_export.NewAccount(label, kind, institution or None)
     try:
         imported = bank_export.save(store, _export(body), targets, new_accounts)
     except KeyError:
@@ -615,6 +615,7 @@ def update_account(app: App, match: re.Match[str], body: dict[str, Any]) -> Any:
         kind=chosen,
         reset_kind=kind == "auto",
         insurer=insurer if isinstance(insurer, str) else None,
+        institution_name=_str(body, "institution_name") if "institution_name" in body else None,
         fee_rate=fee_rate,
         clear_fee_rate="fee_rate" in body and body["fee_rate"] is None,
     )

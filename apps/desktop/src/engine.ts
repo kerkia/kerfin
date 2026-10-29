@@ -102,7 +102,7 @@ export const engine = {
   importExport: (
     data: string,
     targets: Record<string, string>,
-    new_accounts: Record<string, { label: string; kind: string }> = {},
+    new_accounts: Record<string, { label: string; kind: string; institution?: string }> = {},
   ) => call<{ imported: number }>("POST", "/api/imports", { data, targets, new_accounts }),
 
   addConnection: (institution: string, label: string, values: Record<string, string>, remember: boolean) =>
@@ -144,6 +144,7 @@ export const engine = {
       hidden?: boolean;
       balance?: string;
       kind?: string;
+      institution_name?: string;
       insurer?: string;
       fee_rate?: string | null;
     },

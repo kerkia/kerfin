@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { budget } from "./budget";
-import { DEFAULT_CATEGORIES, categorise, categoryKey, payeeKey, transferPairs } from "./categories";
+import { budget, lastMonths } from "./budget";
+import { DEFAULT_CATEGORIES, categorise, categoryKey, payeeKey, transferPairs, withRequired } from "./categories";
 import type { AccountTransaction } from "./types";
 
 function tx(
@@ -29,7 +29,7 @@ const TRANSACTIONS = [
 ];
 
 describe("budget", () => {
-  const result = budget(TRANSACTIONS, new Set(["current"]), "2026-10-29", 3);
+  const result = budget(TRANSACTIONS, new Set(["current"]), lastMonths("2026-10-29", 3), "2026-10-29");
 
   it("adds income and spending by month, the current month last", () => {
     expect(result.months).toEqual([
@@ -63,23 +63,38 @@ describe("budget", () => {
       tx("current", "2026-09-20", "VIR SEPA vers livret", "-500"),
       tx("savings", "2026-09-21", "VIR SEPA recu", "500"),
     ];
-    const mine = budget(moved, new Set(["current", "savings"]), "2026-10-29", 3, { "some shop": "leisure" });
+    const mine = budget(moved, new Set(["current", "savings"]), lastMonths("2026-10-29", 3), "2026-10-29", { "some shop": "leisure" });
     expect(mine.months[1]).toEqual({ month: "2026-09", income: 3000, spending: 1100 });
     // Also when only one of the two accounts is shown.
-    const one = budget(moved, new Set(["current"]), "2026-10-29", 3);
+    const one = budget(moved, new Set(["current"]), lastMonths("2026-10-29", 3), "2026-10-29");
     expect(one.months[1]!.spending).toBe(1100);
     expect(mine.categories.find((c) => c.key === "leisure")?.value).toBe(250);
   });
 
   it("counts refunds against their category", () => {
     const refunded = [...TRANSACTIONS, tx("current", "2026-09-11", "Some Shop", "40", "Alimentation")];
-    const result = budget(refunded, new Set(["current"]), "2026-10-29", 3);
+    const result = budget(refunded, new Set(["current"]), lastMonths("2026-10-29", 3), "2026-10-29");
     expect(result.categories.find((c) => c.key === "groceries")?.value).toBe(210);
     expect(result.months[1]!.income).toBe(3000);
   });
 
+  it("covers a chosen range, averaging the months it spans whole", () => {
+    const range = budget(TRANSACTIONS, new Set(["current"]), { from: "2026-08-15", to: "2026-09-30" }, "2026-10-29");
+    expect(range.months.map((m) => [m.month, m.income, m.spending])).toEqual([
+      ["2026-08", 3000, 0],
+      ["2026-09", 3000, 1100],
+    ]);
+    expect([range.full, range.spending]).toEqual([1, 1100]);
+  });
+
+  it("leaves ignored payees out altogether", () => {
+    const result = budget(TRANSACTIONS, new Set(["current"]), lastMonths("2026-10-29", 3), "2026-10-29", { rent: "ignored" });
+    expect(result.months[0]).toEqual({ month: "2026-08", income: 3000, spending: 0 });
+    expect(result.categories.some((c) => c.key === "ignored" || c.key === "housing")).toBe(false);
+  });
+
   it("crosses into the previous year", () => {
-    expect(budget([], new Set(), "2026-02-10", 3).months.map((m) => m.month)).toEqual(["2025-12", "2026-01", "2026-02"]);
+    expect(budget([], new Set(), lastMonths("2026-02-10", 3), "2026-02-10").months.map((m) => m.month)).toEqual(["2025-12", "2026-01", "2026-02"]);
   });
 });
 
@@ -124,6 +139,11 @@ describe("categories", () => {
     const trimmed = DEFAULT_CATEGORIES.filter((c) => c.key !== "groceries" && c.key !== "health");
     const [shop] = categorise([tx("a", "2026-10-01", "CARTE MONOPRIX", "-1", "Alimentation")], { monoprix: "health" }, trimmed);
     expect([shop!.key, shop!.origin]).toEqual(["other", "none"]);
+  });
+
+  it("adds the categories Kerfin relies on to an older saved list, Other last", () => {
+    const saved = [{ key: "my_food", kind: "spending" as const }, { key: "transfers", kind: "excluded" as const }, { key: "other", kind: "spending" as const }];
+    expect(withRequired(saved).map((c) => c.key)).toEqual(["my_food", "transfers", "ignored", "other"]);
   });
 
   it("gives new categories keys of their own", () => {

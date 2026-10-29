@@ -167,11 +167,12 @@ rules for well-known merchants; the bank's category mapped onto Kerfin's; else "
 payee is the bank's cleaned-up merchant name, else the label without card prefixes, dates and
 references. Changing a transaction's category sets it for its payee, so the correction sticks.
 The user can rename, add and remove categories and say what each counts as (spending, income,
-not counted); "transfers" and "other" can only be renamed.
+not counted); "transfers", "ignored" (left out of the budget altogether) and "other" can only
+be renamed.
 
-`packages/core/src/budget.ts` adds up the transactions of the accounts picked by calendar
-month: income, spending less refunds, by category and by payee. Averages leave out the
-current month, still under way.
+`packages/core/src/budget.ts` adds up the transactions of the accounts and dates picked by
+calendar month: income, spending less refunds, by category and by payee. Averages cover the
+months the dates span whole and that are over.
 
 ## Connectors
 

@@ -1,5 +1,6 @@
-// The portfolio by type of account (assurance-vie, PER, PEA, CTO, savings...) rather than
-// account by account: shares, amounts, and each type's accounts.
+// Savings and investments by type of account (assurance-vie, PER, PEA, CTO, savings...)
+// rather than account by account: shares, amounts, and each type's accounts. Day-to-day
+// accounts (current accounts, cards, loans) are left out.
 import { accountInsurer, groupAccounts } from "@kerfin/core";
 import type { AccountKind } from "@kerfin/core";
 import { useMemo, useState } from "react";
@@ -9,11 +10,16 @@ import { GroupTable } from "../components/GroupTable";
 import { useData } from "../data";
 import { kindLabel, money, t } from "../i18n";
 
+const DAY_TO_DAY = new Set<AccountKind>(["checking", "card", "loan"]);
+
 export function AccountTypesPage() {
   const { overview, accountInstitution } = useData();
   const [active, setActive] = useState<string | null>(null);
 
-  const groups = useMemo(() => (overview ? groupAccounts(overview.accounts, (a) => a.kind) : []), [overview]);
+  const groups = useMemo(
+    () => (overview ? groupAccounts(overview.accounts, (a) => (DAY_TO_DAY.has(a.kind) ? null : a.kind)) : []),
+    [overview],
+  );
   if (!overview) return null;
 
   const total = groups.reduce((sum, g) => sum + g.total, 0);

@@ -146,10 +146,15 @@ def test_a_bank_export_is_previewed_then_imported(api: Any) -> None:
         ("card", "American Express"),
     ]
     targets = {preview[0]["number"]: "new", preview[1]["number"]: "skip"}
-    named = {preview[0]["number"]: {"label": "My current account", "kind": "checking"}}
+    named = {
+        preview[0]["number"]: {"label": "My current account", "kind": "checking", "institution": "Some Bank"}
+    }
     body = {"data": data, "targets": targets, "new_accounts": named}
     assert api("POST", "/api/imports", body)["imported"] == 2
-    assert [a["label"] for a in api("GET", "/api/overview")["accounts"]] == ["My current account"]
+    [created] = api("GET", "/api/overview")["accounts"]
+    assert (created["label"], created["institution_name"]) == ("My current account", "Some Bank")
+    api("PATCH", f"/api/accounts/{created['id']}", {"institution_name": "Other Bank"})
+    assert api("GET", "/api/overview")["accounts"][0]["institution_name"] == "Other Bank"
     answer = api("GET", "/api/transactions")
     assert [t["payee"] for t in answer["transactions"]] == ["Some Grocer", "Employer"]
 
@@ -159,11 +164,12 @@ def test_a_bank_export_is_previewed_then_imported(api: Any) -> None:
     mine = [
         {"key": "my_food", "kind": "spending", "label": "Food"},
         {"key": "transfers", "kind": "excluded"},
+        {"key": "ignored", "kind": "excluded"},
         {"key": "other", "kind": "spending", "label": "Misc"},
     ]
     assert api("PUT", "/api/categories", {"categories": mine}) == {}
     answer = api("GET", "/api/transactions")
-    assert [c["label"] for c in answer["categories"]] == ["Food", None, "Misc"]
+    assert [c["label"] for c in answer["categories"]] == ["Food", None, None, "Misc"]
     assert answer["rules"] == {}  # "groceries" is gone, and its rule with it
     assert api("PUT", "/api/categories", {"categories": mine[:1]})["status"] == 400  # transfers, other needed
     assert api("POST", "/api/imports/preview", {"data": "not base64!"})["status"] == 400

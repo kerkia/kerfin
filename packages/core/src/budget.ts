@@ -21,45 +21,60 @@ export interface Payee {
 }
 
 export interface Budget {
-  months: BudgetMonth[]; // oldest first, the current month last (still under way)
-  full: number; // months before the current one, which the averages cover
+  months: BudgetMonth[]; // the range's calendar months, oldest first
+  full: number; // the months the range covers whole and that are over, which the averages cover
   income: number; // a month on average, over the full months
   spending: number;
   categories: Slice[]; // spending by category over the months, largest first
   payees: Payee[]; // largest spending first
-  transactions: Categorised[]; // over the months, newest first
+  transactions: Categorised[]; // over the range, newest first
+  byAccount: Record<string, { income: number; spending: number; count: number }>; // over the range
 }
 
-/** The month `n` months before `month` (YYYY-MM). */
-function monthsBefore(month: string, n: number): string {
-  const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 - n;
+/** The month `n` months after `month` (YYYY-MM); `n` may be negative. */
+export function addMonths(month: string, n: number): string {
+  const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + n;
   return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
 }
 
+/** The last day of a month (YYYY-MM), as YYYY-MM-DD. */
+function monthEnd(month: string): string {
+  const day = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0));
+  return day.toISOString().slice(0, 10);
+}
+
+/** The `count` calendar months ending with `today`'s, as a date range. */
+export function lastMonths(today: string, count: number): { from: string; to: string } {
+  return { from: `${addMonths(today.slice(0, 7), 1 - count)}-01`, to: today };
+}
+
 /**
- * The budget over the `count` calendar months ending with `today`'s, from the transactions of
- * `accounts` (ids), categorised with the user's `rules` and `categories`. The source's
- * currency is taken as euros.
+ * The budget from `from` to `to` (YYYY-MM-DD, both included) as of `today`, from the
+ * transactions of `accounts` (ids), categorised with the user's `rules` and `categories`.
+ * The source's currency is taken as euros.
  */
 export function budget(
   transactions: AccountTransaction[],
   accounts: Set<string>,
+  range: { from: string; to: string },
   today: string,
-  count: number,
   rules: Record<string, string> = {},
   categories: CategoryDef[] = DEFAULT_CATEGORIES,
 ): Budget {
-  const current = today.slice(0, 7);
-  const months = Array.from({ length: count }, (_, i) => ({ month: monthsBefore(current, count - 1 - i), income: 0, spending: 0 }));
-  const first = months[0]!.month;
+  const { from, to } = range;
+  const months: BudgetMonth[] = [];
+  for (let month = from.slice(0, 7); month <= to.slice(0, 7) && months.length < 600; month = addMonths(month, 1)) {
+    months.push({ month, income: 0, spending: 0 });
+  }
   const byMonth = new Map(months.map((m) => [m.month, m]));
   const kinds = new Map(categories.map((c) => [c.key, c.kind]));
   const totals = new Map<string, number>();
   const payees = new Map<string, Payee>();
+  const byAccount: Budget["byAccount"] = {};
 
   // Every account's transactions are categorised together, for transfers to find their pair.
   const kept = categorise(
-    transactions.filter((tx) => tx.date.slice(0, 7) >= first && tx.date.slice(0, 7) <= current),
+    transactions.filter((tx) => tx.date.slice(0, 10) >= from && tx.date.slice(0, 10) <= to),
     rules,
     categories,
   )
@@ -70,14 +85,18 @@ export function budget(
     const value = amount(tx.amount);
     const kind = kinds.get(tx.key) ?? "spending";
     const entry = byMonth.get(tx.date.slice(0, 7))!;
+    const account = (byAccount[tx.account_id] ??= { income: 0, spending: 0, count: 0 });
+    account.count += 1;
     if (kind === "excluded") continue;
     if (kind === "income" || (value > 0 && tx.origin === "none")) {
       // Income, or money in that nothing categorises (else a refund).
       entry.income += value;
+      account.income += value;
       continue;
     }
     // Spending, less refunds.
     entry.spending -= value;
+    account.spending -= value;
     totals.set(tx.key, (totals.get(tx.key) ?? 0) - value);
     if (value < 0) {
       const payee = payees.get(tx.payeeKey) ?? { key: tx.payeeKey, label: tx.payee || tx.label, spending: 0, count: 0 };
@@ -87,9 +106,10 @@ export function budget(
     }
   }
 
-  // The current month isn't over: averages leave it out, unless it is all there is.
-  const full = Math.max(count - 1, 0);
-  const averaged = full ? months.slice(0, full) : months;
+  // Averages cover the months the range spans whole and that are over, unless there are none.
+  const whole = months.filter((m) => `${m.month}-01` >= from && monthEnd(m.month) <= to && monthEnd(m.month) < today);
+  const full = whole.length;
+  const averaged = full ? whole : months;
   const average = (key: "income" | "spending") => averaged.reduce((sum, m) => sum + m[key], 0) / averaged.length;
   const spent = [...totals.values()].filter((v) => v > 0).reduce((sum, v) => sum + v, 0);
   return {
@@ -103,5 +123,6 @@ export function budget(
       .sort((a, b) => b.value - a.value),
     payees: [...payees.values()].sort((a, b) => b.spending - a.spending),
     transactions: kept,
+    byAccount,
   };
 }

@@ -522,6 +522,7 @@ class Store:
         kind: AccountKind | None = None,
         reset_kind: bool = False,
         insurer: str | None = None,
+        institution_name: str | None = None,
         fee_rate: Decimal | None = None,
         clear_fee_rate: bool = False,
     ) -> None:
@@ -537,6 +538,12 @@ class Store:
                 db.execute(
                     "UPDATE accounts SET kind_override = ? WHERE id = ?",
                     (None if reset_kind else str(kind), account_id),
+                )
+            if institution_name is not None and institution_name.strip():
+                # Only an account entered by hand: a connection names its accounts' institutions.
+                db.execute(
+                    "UPDATE accounts SET institution_name = ? WHERE id = ? AND connection_id IS NULL",
+                    (institution_name.strip(), account_id),
                 )
             if insurer is not None:
                 db.execute(

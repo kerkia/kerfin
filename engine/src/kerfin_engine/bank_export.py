@@ -177,6 +177,15 @@ def target(store: Store, account: ExportAccount) -> str | None:
     return same[0]["id"] if len(same) == 1 else None
 
 
+@dataclass(frozen=True)
+class NewAccount:
+    """What the user chose for an account the import creates."""
+
+    label: str
+    kind: AccountKind
+    institution: str | None = None
+
+
 def institution(account: ExportAccount) -> str:
     """Where an export's account is held: as its name gives away, else the export's bank."""
     return next(
@@ -193,11 +202,11 @@ def save(
     store: Store,
     accounts: list[ExportAccount],
     targets: dict[str, object],
-    new_accounts: dict[str, tuple[str, AccountKind]] | None = None,
+    new_accounts: dict[str, NewAccount] | None = None,
 ) -> int:
     """Imports each account's transactions where `targets` says (an account id, "new" or
-    "skip"); a new account takes the name and kind `new_accounts` gives, else the file's
-    name and a guessed kind. Returns how many transactions were imported."""
+    "skip"); a new account takes the name, kind and institution `new_accounts` gives, else
+    the file's name and guesses. Returns how many transactions were imported."""
     known = {a["id"]: a for a in store.accounts()}
     count = 0
     for account in accounts:
@@ -205,9 +214,13 @@ def save(
         if chosen == "skip" or not account.transactions:
             continue
         if chosen == "new":
-            label, chosen_kind = (new_accounts or {}).get(account.number, (account.label, kind(account)))
+            given = (new_accounts or {}).get(account.number) or NewAccount(account.label, kind(account))
             account_id = store.add_manual_account(
-                institution(account), label, chosen_kind, account.balance or Decimal(0), "EUR"
+                given.institution or institution(account),
+                given.label,
+                given.kind,
+                account.balance or Decimal(0),
+                "EUR",
             )
         elif isinstance(chosen, str) and chosen in known:
             account_id = chosen
