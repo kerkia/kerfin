@@ -11,7 +11,7 @@ import { longDate, money, t } from "../i18n";
 import { Dialog } from "./ui";
 
 /** The file's bytes as base64, for the engine to decode whatever the file's encoding. */
-async function base64(file: File): Promise<string> {
+export async function base64(file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));

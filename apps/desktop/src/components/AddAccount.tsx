@@ -1,12 +1,13 @@
-// Adding an account: connect Finary (which collects the accounts linked there), or type
-// the balance of an account by hand.
+// Adding accounts: from a bank's transactions file, by hand, or by connecting Finary (which
+// brings in the accounts linked there).
 import type { Connection, Institution, Prompt } from "@kerfin/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useData } from "../data";
 import { EngineError, engine } from "../engine";
 import { KIND_OPTIONS, errorText, kindLabel, t } from "../i18n";
 import { FinaryConnect } from "./FinaryConnect";
+import { ImportFile } from "./ImportFile";
 import { useJobs } from "./Jobs";
 import { Dialog, PromptInput, initialValues, promptError } from "./ui";
 
@@ -14,7 +15,8 @@ type Step =
   | { kind: "pick" }
   | { kind: "finary" }
   | { kind: "connect"; institution: Institution }
-  | { kind: "manual"; name: string };
+  | { kind: "manual"; name: string }
+  | { kind: "file" };
 
 export function AddAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [step, setStep] = useState<Step>({ kind: "pick" });
@@ -23,12 +25,13 @@ export function AddAccount({ open, onClose }: { open: boolean; onClose: () => vo
     onClose();
   };
   return (
-    <Dialog open={open} onClose={close}>
+    <Dialog open={open} onClose={close} wide={step.kind === "file"}>
       {step.kind === "pick" && <Pick onPick={setStep} onCancel={close} />}
       {step.kind === "finary" && <FinaryConnect onBack={() => setStep({ kind: "pick" })} onDone={close} />}
       {step.kind === "connect" && (
         <ConnectForm institution={step.institution} onBack={() => setStep({ kind: "pick" })} onDone={close} />
       )}
+      {step.kind === "file" && <ImportFile onBack={() => setStep({ kind: "pick" })} onDone={close} />}
       {step.kind === "manual" && (
         <ManualForm name={step.name} onBack={() => setStep({ kind: "pick" })} onDone={close} />
       )}
@@ -37,52 +40,41 @@ export function AddAccount({ open, onClose }: { open: boolean; onClose: () => vo
 }
 
 function Pick({ onPick, onCancel }: { onPick: (step: Step) => void; onCancel: () => void }) {
-  const { institutions } = useData();
-  const [query, setQuery] = useState("");
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return institutions
-      .filter((i) => i.offered && (!q || `${i.name} ${i.products}`.toLowerCase().includes(q)))
-      .sort((a, b) => Number(b.implemented) - Number(a.implemented) || a.name.localeCompare(b.name));
-  }, [institutions, query]);
+  const { institutions, overview } = useData();
+  const finaryConnected = (overview?.connections ?? []).some((c) => c.institution === "finary");
+  // Other connections still offered (the demo bank while developing).
+  const others = institutions.filter((i) => i.offered && i.connector !== "finary" && i.implemented);
 
   return (
     <>
       <h2>{t("add.title")}</h2>
-      <input
-        className="input"
-        placeholder={t("add.search")}
-        aria-label={t("add.search")}
-        autoFocus
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-      <div className="institution-pick list">
-        {shown.map((institution) => (
-          <button
-            key={institution.id}
-            className="list-row"
-            onClick={() =>
-              onPick(
-                institution.connector === "finary"
-                  ? { kind: "finary" }
-                  : institution.implemented
-                    ? { kind: "connect", institution }
-                    : { kind: "manual", name: institution.name },
-              )
-            }
-          >
+      <div className="list">
+        <button className="list-row" onClick={() => onPick({ kind: "file" })}>
+          <span>
+            <div>{t("add.file")}</div>
+            <div className="muted small">{t("add.fileHint")}</div>
+          </span>
+        </button>
+        <button className="list-row" onClick={() => onPick({ kind: "manual", name: "" })}>
+          <span>
+            <div>{t("add.byHand")}</div>
+            <div className="muted small">{t("add.byHandHint")}</div>
+          </span>
+        </button>
+        <button className="list-row" onClick={() => onPick({ kind: "finary" })}>
+          <span>
+            <div>{finaryConnected ? t("add.finaryAnother") : t("add.finary")}</div>
+            <div className="muted small">{finaryConnected ? t("add.finaryAnotherHint") : t("add.finaryHint")}</div>
+          </span>
+        </button>
+        {others.map((institution) => (
+          <button key={institution.id} className="list-row" onClick={() => onPick({ kind: "connect", institution })}>
             <span>
-              <div>{institution.name}</div>
+              <div>{t("add.connectTitle", { name: institution.name })}</div>
               <div className="muted small">{institution.products}</div>
             </span>
-            <span className="tag">{institution.implemented ? t("add.connect") : t("add.manualTag")}</span>
           </button>
         ))}
-        <button className="list-row" onClick={() => onPick({ kind: "manual", name: query.trim() })}>
-          <span>{t("add.otherManual")}</span>
-          <span className="tag">{t("add.manualTag")}</span>
-        </button>
       </div>
       <div className="dialog-actions">
         <button className="btn" onClick={onCancel}>

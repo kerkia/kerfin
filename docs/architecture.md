@@ -150,8 +150,10 @@ years count as reinvesting (accumulating funds).
 
 Transactions come from Finary (on plans that include its budget) or from a bank's CSV export
 (`engine/src/kerfin_engine/bank_export.py`: BoursoBank's, which includes the accounts it
-aggregates), imported into one account from its panel in Accounts. The user confirms which of
-the file's accounts it is (remembered by account number); its transactions replace the
+aggregates). "Add account › From a transactions file" lists the file's accounts, each to
+create (named and typed by the user), add to an existing account, or leave out; an account's
+panel in Accounts imports newer files into it. Which of the file's accounts
+goes where is remembered by account number; its transactions replace the
 account's over the days the file covers, so overlapping imports never double them, and an
 account entered by hand takes the file's balance.
 

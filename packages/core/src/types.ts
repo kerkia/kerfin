@@ -123,6 +123,8 @@ export interface ImportAccount {
   spending: string;
   balance: string | null;
   target: string | null; // the account it went to last time, or of the same name
+  kind: AccountKind; // guessed from its name, for a new account
+  institution: string; // where it is held, for a new account
 }
 
 /** A transaction of any account, as the budget reads them. */

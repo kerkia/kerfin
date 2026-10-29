@@ -141,8 +141,15 @@ def test_a_bank_export_is_previewed_then_imported(api: Any) -> None:
         ("COMPTE BANCAIRE", 2, "42.10", None),
         ("Carte Amex", 1, "310.00", None),
     ]
+    assert [(a["kind"], a["institution"]) for a in preview] == [
+        ("checking", "BoursoBank"),
+        ("card", "American Express"),
+    ]
     targets = {preview[0]["number"]: "new", preview[1]["number"]: "skip"}
-    assert api("POST", "/api/imports", {"data": data, "targets": targets})["imported"] == 2
+    named = {preview[0]["number"]: {"label": "My current account", "kind": "checking"}}
+    body = {"data": data, "targets": targets, "new_accounts": named}
+    assert api("POST", "/api/imports", body)["imported"] == 2
+    assert [a["label"] for a in api("GET", "/api/overview")["accounts"]] == ["My current account"]
     answer = api("GET", "/api/transactions")
     assert [t["payee"] for t in answer["transactions"]] == ["Some Grocer", "Employer"]
 

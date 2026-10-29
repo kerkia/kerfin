@@ -1015,6 +1015,15 @@ th:hover .sort-mark.idle {
 
 /* Fees & income */
 
+/* Adding accounts from a file: one row per account in it */
+.import-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
 /* Budget: a transaction's category, changed in place */
 .category-pick {
   width: auto;

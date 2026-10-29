@@ -99,8 +99,11 @@ export const engine = {
     call<object>("PUT", "/api/category-rules", { payee_key, category }),
   setCategories: (categories: CategoryDef[]) => call<object>("PUT", "/api/categories", { categories }),
   previewImport: (data: string) => call<{ accounts: ImportAccount[] }>("POST", "/api/imports/preview", { data }),
-  importExport: (data: string, targets: Record<string, string>) =>
-    call<{ imported: number }>("POST", "/api/imports", { data, targets }),
+  importExport: (
+    data: string,
+    targets: Record<string, string>,
+    new_accounts: Record<string, { label: string; kind: string }> = {},
+  ) => call<{ imported: number }>("POST", "/api/imports", { data, targets, new_accounts }),
 
   addConnection: (institution: string, label: string, values: Record<string, string>, remember: boolean) =>
     call<{ connection_id: string; job: Job }>("POST", "/api/connections", {

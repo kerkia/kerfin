@@ -547,6 +547,8 @@ def preview_import(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
                 "spending": str(-sum((a for a in amounts if a < 0), Decimal(0))),
                 "balance": None if account.balance is None else str(account.balance),
                 "target": bank_export.target(store, account),
+                "kind": bank_export.kind(account),
+                "institution": bank_export.institution(account),
             }
         )
     return {"accounts": found}
@@ -560,8 +562,18 @@ def import_export(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
     targets = body.get("targets")
     if not isinstance(targets, dict):
         raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "targets")
+    # "new_accounts": {number: {"label", "kind"}}, the user's name and kind for new accounts.
+    new_accounts = {}
+    for number, given in (body.get("new_accounts") or {}).items():
+        try:
+            label, kind = str(given["label"]).strip(), AccountKind(given["kind"])
+        except (KeyError, TypeError, ValueError):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "new_accounts") from None
+        if not label or len(label) > 100:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "new_accounts")
+        new_accounts[str(number)] = (label, kind)
     try:
-        imported = bank_export.save(store, _export(body), targets)
+        imported = bank_export.save(store, _export(body), targets, new_accounts)
     except KeyError:
         raise ApiError(HTTPStatus.NOT_FOUND, "unknown_account") from None
     app.persist()
