@@ -132,6 +132,9 @@ published fee table can be an alias of a close one (the first Linxea Avenir uses
 Avenir 2's). What fees cost over 10, 20 and 30 years compares today's value grown at an
 assumed rate with and without them.
 
+Funds' maximum entry fees (Finary's `subscription_fees_ratio`, one-off on each purchase) show
+in a column of their own when some fund has one; they aren't part of the yearly figures.
+
 The page keeps the two kinds apart: security fees (funds' charges) sit with each holding's
 income in the holdings table, which filters by account; account fees (the contracts') have
 their own table beside it. Picking an account (or clicking it in that table) scopes the
@@ -170,7 +173,8 @@ way.
   Overview and Accounts pages, since those figures are as of Finary's last update.
 - **Transactions.** `list_transactions` covers every account at once (cursor pages, over the
   last 400 days, without transfers between the user's own accounts); Kerfin splits them by
-  account and keeps the source's category.
+  account and keeps the source's category. When Finary lists none, it answers with an
+  `availability` and a `note` instead; the Budget page shows that note.
 - **Reading answers.** Finary names its tools but doesn't document their answers, so the
   mapping looks for the usual field names. When an answer can't be read, the error and the
   log give its structure (field names and types, never values).

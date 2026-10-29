@@ -462,7 +462,10 @@ def market_data(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
 def all_transactions(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
     """Every account's transactions over the last thirteen months, for the budget."""
     store, _sync = app.unlocked()
-    return {"transactions": store.all_transactions(date.today() - timedelta(days=BUDGET_DAYS))}
+    return {
+        "transactions": store.all_transactions(date.today() - timedelta(days=BUDGET_DAYS)),
+        "notices": store.transactions_notices(),
+    }
 
 
 @route("GET", "/api/accounts/(?P<id>\\w+)")

@@ -102,6 +102,13 @@ export interface Transaction {
   category?: string | null; // the source's spending category
 }
 
+/** Why a source lists no transactions, in its words (Finary: its plan, its budget set-up...). */
+export interface TransactionsNotice {
+  connection_id: string;
+  availability: string;
+  note: string;
+}
+
 /** A transaction of any account, as the budget reads them. */
 export interface AccountTransaction extends Transaction {
   account_id: string;

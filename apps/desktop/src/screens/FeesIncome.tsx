@@ -93,6 +93,9 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
   const rows = fees.lines.filter((line) => !shown || line.holding.account_id === shown).sort((a, b) => b.value - a.value);
   const rowTotal = (pick: (row: (typeof rows)[number]) => number) => rows.reduce((sum, row) => sum + pick(row), 0);
   const security = (row: (typeof rows)[number]) => row.value * (row.fundRate ?? 0);
+  // Funds' maximum entry fees: a column only when some fund has one.
+  const entryFee = (row: (typeof rows)[number]) => (row.holding.entry_fees ? Number(row.holding.entry_fees) : 0);
+  const withEntryFees = fees.lines.some((line) => entryFee(line) > 0);
   // Contracts first, by their fees; then the accounts without account fees.
   const accountRows = [...fees.accounts].sort((a, b) => b.contractFees - a.contractFees || b.value - a.value);
 
@@ -220,6 +223,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
                   <th className="right">{t("portfolio.value")}</th>
                   <th className="right">{t("fees.rate")}</th>
                   <th className="right">{t("fees.perYear")}</th>
+                  {withEntryFees && <th className="right">{t("fees.entry")}</th>}
                   <th className="right">{t("income.yield")}</th>
                   <th className="right">{t("income.perYear")}</th>
                 </tr>
@@ -246,6 +250,9 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
                         )}
                       </td>
                       <td className="right num">{whole(security(row))}</td>
+                      {withEntryFees && (
+                        <td className="right num">{entryFee(row) > 0 ? rate(entryFee(row)) : <span className="muted">—</span>}</td>
+                      )}
                       <td className="right num">
                         {paid ? (
                           <>
@@ -262,7 +269,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
                 })}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="muted">
+                    <td colSpan={withEntryFees ? 7 : 6} className="muted">
                       {t("fees.noHoldings")}
                     </td>
                   </tr>
@@ -272,6 +279,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
                   <td className="right num">{whole(rowTotal((row) => row.value))}</td>
                   <td />
                   <td className="right num">{whole(rowTotal(security))}</td>
+                  {withEntryFees && <td />}
                   <td />
                   <td className="right num">{whole(rowTotal((row) => incomeOf.get(row.holding)?.yearly ?? 0))}</td>
                 </tr>
@@ -284,7 +292,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
             </p>
           )}
           <p className="muted small" style={{ margin: "6px 0 0" }}>
-            {t("fees.sources")} {t("income.sources")}
+            {t("fees.sources")} {withEntryFees && t("fees.entryHelp")} {t("income.sources")}
           </p>
         </section>
 

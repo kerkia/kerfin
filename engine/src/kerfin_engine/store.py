@@ -71,7 +71,8 @@ CREATE TABLE holdings (
     security_type TEXT,
     fees TEXT,
     match TEXT,                    -- how the security was found (see domain.Holding)
-    annual_yield TEXT              -- yearly yield the source states, as a fraction
+    annual_yield TEXT,             -- yearly yield the source states, as a fraction
+    entry_fees TEXT                -- the fund's maximum entry fee, as a fraction
 );
 -- Market data for the securities held: where their prices come from, and the prices.
 CREATE TABLE securities (
@@ -122,7 +123,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -162,6 +163,7 @@ MIGRATIONS = {
         "ALTER TABLE accounts ADD COLUMN sync_warning TEXT",
         "ALTER TABLE transactions ADD COLUMN category TEXT",
     ),
+    9: ("ALTER TABLE holdings ADD COLUMN entry_fees TEXT",),
 }
 
 
@@ -288,6 +290,7 @@ class Store:
     def delete_connection(self, connection_id: str) -> None:
         with self.transaction() as db:
             db.execute("DELETE FROM connections WHERE id = ?", (connection_id,))
+            db.execute("DELETE FROM settings WHERE key = ?", (f"transactions_notice:{connection_id}",))
 
     def record_sync(self, connection_id: str, status: str, error: str | None = None) -> None:
         with self.transaction() as db:
@@ -320,7 +323,7 @@ class Store:
                     db.executemany(
                         "INSERT INTO holdings (account_id, label, isin, quantity, unit_value, unit_price,"
                         " valuation, currency, value_date, unit_value_currency, security_type, fees, match,"
-                        " annual_yield) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " annual_yield, entry_fees) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [
                             (
                                 account_id,
@@ -337,6 +340,7 @@ class Store:
                                 _text(h.fees),
                                 h.match,
                                 _text(h.annual_yield),
+                                _text(h.entry_fees),
                             )
                             for h in holdings
                         ],
@@ -488,7 +492,7 @@ class Store:
         """One account's holdings, or every holding (with its account) when `account_id` is None."""
         return self._rows(
             "SELECT account_id, label, isin, quantity, unit_value, unit_price, valuation, currency,"
-            " value_date, unit_value_currency, security_type, fees, match, annual_yield"
+            " value_date, unit_value_currency, security_type, fees, match, annual_yield, entry_fees"
             " FROM holdings WHERE ? IS NULL OR account_id = ? ORDER BY rowid",  # the source's order
             account_id,
             account_id,
@@ -579,6 +583,14 @@ class Store:
         for row in rows:
             row["pending"] = bool(row["pending"])
         return rows
+
+    def transactions_notices(self) -> list[dict[str, str]]:
+        """What sources said when they listed no transactions, by connection."""
+        notices = []
+        for row in self._rows("SELECT key, value FROM settings WHERE key LIKE 'transactions_notice:%'"):
+            if row["value"]:
+                notices.append({"connection_id": row["key"].split(":", 1)[1], **json.loads(row["value"])})
+        return notices
 
     def all_transactions(self, since: date) -> list[dict[str, Any]]:
         """Every account's transactions since `since`, newest first."""

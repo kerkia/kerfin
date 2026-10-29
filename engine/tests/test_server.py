@@ -96,7 +96,9 @@ def test_add_connection_with_sms_code(api: Any) -> None:
     assert len(overview["accounts"]) == 6 and overview["connections"][0]["last_status"] == "ok"
     pea = next(a for a in overview["accounts"] if a["label"] == "PEA")
     assert pea["sync_warning"] == "credentials_expired" and pea["source_synced_at"]
-    spending = api("GET", "/api/transactions")["transactions"]
+    answer = api("GET", "/api/transactions")
+    spending = answer["transactions"]
+    assert answer["notices"] == []  # the demo lists its transactions
     assert spending and spending[0]["account_id"] and any(t["category"] == "Rent" for t in spending)
 
     # The password wasn't remembered: the next sync asks for it first.

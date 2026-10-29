@@ -4,6 +4,7 @@ import json
 from datetime import date
 from decimal import Decimal
 
+import conftest
 import pytest
 from conftest import FINARY_ACCOUNTS, FakeFinary
 
@@ -60,6 +61,35 @@ def test_transactions_are_read_across_pages_and_split_by_account(fake_finary: Fa
     assert connector.transactions("acc-2") == []
     # Read once for every account.
     assert fake_finary.calls.count("list_transactions") == 2
+
+
+def test_finary_s_reason_for_listing_no_transactions_is_kept(
+    fake_finary: FakeFinary, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notice = {"availability": "unavailable", "note": "Budget isn't set up."}
+    monkeypatch.setattr(conftest, "FINARY_TRANSACTIONS", [notice])
+    connector = finary.FinaryConnector(
+        {"client_id": "client-1", "refresh_token": "r1", "token_endpoint": f"{fake_finary.base}/oauth/token"}
+    )
+
+    assert connector.transactions("acc-1") == []
+    assert connector.transactions_notice == notice
+
+
+def test_entry_fees_are_kept_as_fractions() -> None:
+    payload = {
+        "holdings": [
+            {"name": "Fund A", "current_value": 100, "subscription_fees_ratio": "0.03"},
+            {"name": "Fund B", "current_value": 100, "subscription_fees_ratio": "2"},
+            {"name": "Fund C", "current_value": 100},
+        ]
+    }
+
+    assert [h.entry_fees for h in finary.holdings_from(payload)[None]] == [
+        Decimal("0.03"),
+        Decimal("0.02"),
+        None,
+    ]
 
 
 def test_unsigned_outgoing_amounts_are_made_negative() -> None:

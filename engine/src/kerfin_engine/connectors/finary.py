@@ -568,6 +568,7 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
             _pick(item, ("unit_price", "buying_price", "average_price", "cost_basis_per_unit"))
         )
         fees, _ = _amount(_pick(item, _FEE_KEYS) or _pick(security, _FEE_KEYS))
+        entry_fees, _ = _amount(_pick(item, _ENTRY_FEE_KEYS) or _pick(security, _ENTRY_FEE_KEYS))
         annual_yield, _ = _amount(_pick(item, _YIELD_KEYS))
         by_account.setdefault(None if account is None else str(account), []).append(
             Holding(
@@ -583,6 +584,7 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
                 ),
                 security_type=_name(_pick(item, _SECURITY_TYPE_KEYS) or _pick(security, _SECURITY_TYPE_KEYS)),
                 fees=_fraction(fees),
+                entry_fees=_entry_fraction(entry_fees),
                 annual_yield=_yield(annual_yield),
                 match=match,
             )
@@ -760,7 +762,7 @@ def _log_links(payload: Any, found: list[Holding]) -> None:
     log.info(
         "Finary holdings: %s of %s with ISIN, %s named; link types %s, included types %s;"
         " link ids %s, included ids %s; same ids %s, link ids equal to holding ids %s,"
-        " one id inside the other %s; types %s, fees %s, stated yields %s",
+        " one id inside the other %s; types %s, fees %s, entry fees %s, stated yields %s",
         sum(bool(h.isin) for h in found),
         len(found),
         named,
@@ -773,12 +775,14 @@ def _log_links(payload: Any, found: list[Holding]) -> None:
         sum(any(a in b or b in a for b in security_ids) for a in link_ids),
         sorted({str(h.security_type) for h in found}),
         sorted({str(h.fees) for h in found}),
+        sorted({str(_flat(item).get("subscription_fees_ratio")) for item in included.values()}),
         # As Finary gives them, to check how they read (percent or fraction).
         sorted({str(_flat(item).get("annual_yield")) for item in data or [] if isinstance(item, Mapping)}),
     )
 
 
 _FEE_KEYS = ("expense_ratio", "ongoing_charges", "ter", "fees")
+_ENTRY_FEE_KEYS = ("subscription_fees_ratio", "entry_fees", "subscription_fees")
 _SECURITY_TYPE_KEYS = ("security_type", "asset_type", "holding_type")
 
 
@@ -792,6 +796,14 @@ def _fraction(ratio: Decimal | None) -> Decimal | None:
     if ratio is None:
         return None
     return ratio / 100 if ratio > Decimal("0.1") else ratio
+
+
+def _entry_fraction(ratio: Decimal | None) -> Decimal | None:
+    """A fund's maximum entry fee as a fraction: 0.03 or 3 (percent) for 3%. No fund charges
+    20% on entry, so values above 0.2 are percentages."""
+    if ratio is None:
+        return None
+    return ratio / 100 if ratio > Decimal("0.2") else ratio
 
 
 _YIELD_KEYS = ("annual_yield", "yield", "interest_rate")
@@ -837,6 +849,8 @@ class FinaryConnector:
         )
         self._holdings: dict[str | None, list[Holding]] | None = None
         self._transactions: dict[str | None, list[Transaction]] | None = None
+        # Why Finary lists no transactions, when it says: {"availability", "note"}.
+        self.transactions_notice: dict[str, str] | None = None
         self._labels: dict[str, str] = {}
 
     def accounts(self) -> list[Account]:
@@ -952,6 +966,14 @@ class FinaryConnector:
             payload = self._mcp.call("list_transactions", arguments)
             if page == 0:
                 log.info("Finary transactions answer: %s", json.dumps(shape(payload)))
+                if isinstance(payload, Mapping) and "availability" in payload and "data" not in payload:
+                    # Finary's own words on why it lists none (its plan, its budget...).
+                    self.transactions_notice = {
+                        "availability": str(payload.get("availability") or ""),
+                        "note": str(payload.get("note") or ""),
+                    }
+                    log.info("Finary transactions unavailable: %s", json.dumps(self.transactions_notice))
+                    return {}
             for account, transactions in transactions_from(payload).items():
                 found.setdefault(account, []).extend(transactions)
             following = _next_cursor(payload)

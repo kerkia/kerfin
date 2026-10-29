@@ -11,6 +11,7 @@ import type {
   Overview,
   Prompt,
   Transaction,
+  TransactionsNotice,
 } from "@kerfin/core";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
@@ -85,7 +86,8 @@ export const engine = {
   fields: (institution: string) => call<Prompt[]>("GET", `/api/institutions/${institution}/fields`),
   overview: () => call<Overview>("GET", "/api/overview"),
   market: () => call<Market>("GET", "/api/market"),
-  transactions: () => call<{ transactions: AccountTransaction[] }>("GET", "/api/transactions"),
+  transactions: () =>
+    call<{ transactions: AccountTransaction[]; notices: TransactionsNotice[] }>("GET", "/api/transactions"),
 
   addConnection: (institution: string, label: string, values: Record<string, string>, remember: boolean) =>
     call<{ connection_id: string; job: Job }>("POST", "/api/connections", {

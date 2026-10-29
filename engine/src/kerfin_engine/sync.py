@@ -7,6 +7,7 @@ prompt; the UI shows it and posts the answer back.
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import threading
@@ -174,6 +175,10 @@ class SyncService:
                 )
                 collected.append((account, holdings, transactions or []))
             job.accounts_found = self._store.save_sync(job.connection_id, collected)
+            notice = getattr(connector, "transactions_notice", None)
+            self._store.set_setting(
+                f"transactions_notice:{job.connection_id}", json.dumps(notice) if notice else ""
+            )
             self._store.record_sync(job.connection_id, "ok")
             if any(holdings for _, holdings, _ in collected):
                 self._refresh_market(job)

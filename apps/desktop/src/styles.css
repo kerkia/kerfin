@@ -358,6 +358,19 @@ dialog.dialog::backdrop {
 .list-row.dimmed {
   opacity: 0.55;
 }
+/* Accounts: name, last update and balance in columns */
+.account-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 200px) 130px;
+  gap: 12px;
+  align-items: center;
+}
+.account-row > :last-child {
+  text-align: right;
+}
+.account-head {
+  padding: 0 8px 6px;
+}
 .institution-pick {
   max-height: 380px;
   overflow-y: auto;

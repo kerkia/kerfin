@@ -1,7 +1,7 @@
 // The budget: income and spending a month, where the money goes by category and payee, and
 // the transactions behind them, from what Finary lists for the accounts its budget covers.
 import { UNCATEGORISED, amount, budget } from "@kerfin/core";
-import type { AccountTransaction } from "@kerfin/core";
+import type { AccountTransaction, TransactionsNotice } from "@kerfin/core";
 import { useEffect, useMemo, useState } from "react";
 
 import { BarList, ColumnChart } from "../components/charts";
@@ -31,6 +31,7 @@ const whole = (value: number) => money(value, "EUR", { maximumFractionDigits: 0 
 export function BudgetPage() {
   const { overview } = useData();
   const [transactions, setTransactions] = useState<AccountTransaction[] | null>(null);
+  const [notices, setNotices] = useState<TransactionsNotice[]>([]);
   const [accountId, setAccountId] = useState("");
   const [months, setMonths] = useState(storedPeriod);
   const [category, setCategory] = useState<string | null>(null);
@@ -38,7 +39,13 @@ export function BudgetPage() {
 
   // Reload after each sync: the overview changes then.
   useEffect(() => {
-    engine.transactions().then((answer) => setTransactions(answer.transactions), () => undefined);
+    engine.transactions().then(
+      (answer) => {
+        setTransactions(answer.transactions);
+        setNotices(answer.notices);
+      },
+      () => undefined,
+    );
   }, [overview]);
 
   // Accounts with transactions, the hidden ones aside.
@@ -64,6 +71,11 @@ export function BudgetPage() {
           <p className="secondary" style={{ margin: 0 }}>
             {t("budget.empty")}
           </p>
+          {notices.map((notice) => (
+            <p key={notice.connection_id} className="small" style={{ margin: "10px 0 0" }}>
+              {t("budget.finarySays", { note: notice.note || notice.availability })}
+            </p>
+          ))}
         </div>
       </>
     );

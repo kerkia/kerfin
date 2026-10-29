@@ -53,6 +53,9 @@ const en = {
   "fees.filter": "Show the holdings of",
   "fees.rate": "Fees",
   "fees.inContract": "contract's",
+  "fees.entry": "Entry fee",
+  "fees.entryHelp":
+    "Entry fee: the most a fund may charge once on each purchase, per its prospectus; life insurance contracts and online brokers often waive it, and ETFs bought on the stock exchange never pay it.",
   "fees.noHoldings": "Finary lists no holdings for this account: its account fees are counted on its balance.",
   "fees.perYear": "Fees /yr",
   "fees.total": "Total",
@@ -80,7 +83,6 @@ const en = {
     "Income: distributions per unit from Yahoo Finance's quote data, for the units held today; interest of euro funds and similar lines as Finary states it. Savings accounts' interest isn't in Finary's data.",
   "sync.title": "Finary can't update some accounts",
   "sync.since": "last updated {date}",
-  "sync.updated": "Updated by Finary {when}",
   "sync.help": "Their figures are as of that date. Reconnect them in Finary, then sync Kerfin again.",
   "budget.allAccounts": "All accounts",
   "budget.account": "Show the budget of",
@@ -113,6 +115,7 @@ const en = {
   "budget.more": "Show {n} more",
   "budget.empty":
     "No transactions yet. Kerfin reads them from Finary at each sync, for the current accounts Finary's budget covers.",
+  "budget.finarySays": "Finary says: {note}",
   "budget.sources": "Transactions as Finary lists them, without transfers between your own accounts.",
   "types.title": "Account types",
   "types.shares": "Share of each type",
@@ -255,6 +258,9 @@ const en = {
   "accounts.neverSynced": "Not synced yet",
   "accounts.errorDetails": "Technical details",
   "accounts.syncedAgo": "Synced {when}",
+  "accounts.account": "Account",
+  "accounts.lastUpdate": "Last update",
+  "accounts.balance": "Balance",
   "accounts.noAccounts": "No accounts found yet.",
   "accounts.hidden": "Excluded from totals",
 

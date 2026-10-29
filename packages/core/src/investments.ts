@@ -16,6 +16,7 @@ export interface MarketHolding {
   fees: string | null; // yearly, as a fraction
   match: HoldingMatch | null;
   annual_yield?: string | null; // yearly yield the source states for the line, as a fraction
+  entry_fees?: string | null; // the fund's maximum entry fee, as a fraction
 }
 
 export interface SecurityInfo {

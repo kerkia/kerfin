@@ -140,6 +140,24 @@ function ConnectionStatus({ connection }: { connection: Connection }) {
   return <span className="status ok">{t("accounts.syncedAgo", { when: ago(connection.last_sync_at) })}</span>;
 }
 
+/** When the account's figures were last updated at its institution, and why not since, if known. */
+function LastUpdate({ account }: { account: Account }) {
+  // Finary's update from the institution; else this app's own (a sync, or a balance typed in).
+  const when = account.source_synced_at ?? account.updated_at;
+  return (
+    <span className="small" title={longDate(when)}>
+      {account.sync_warning ? (
+        <>
+          <div className="status error">{syncReason(account.sync_warning)}</div>
+          <div className="muted">{t("sync.since", { date: longDate(when) })}</div>
+        </>
+      ) : (
+        <span className="secondary">{ago(when)}</span>
+      )}
+    </span>
+  );
+}
+
 function AccountRows({
   accounts,
   open,
@@ -154,10 +172,15 @@ function AccountRows({
   if (accounts.length === 0) return <p className="muted" style={{ margin: 0 }}>{t("accounts.noAccounts")}</p>;
   return (
     <div className="list">
+      <div className="account-row account-head muted small">
+        <span>{t("accounts.account")}</span>
+        <span>{t("accounts.lastUpdate")}</span>
+        <span>{t("accounts.balance")}</span>
+      </div>
       {accounts.map((account) => (
         <div key={account.id} className={open === account.id ? "account-item open" : "account-item"}>
         <button
-          className={account.hidden ? "list-row dimmed" : "list-row"}
+          className={account.hidden ? "list-row account-row dimmed" : "list-row account-row"}
           aria-expanded={open === account.id}
           onClick={() => onToggle(account)}
         >
@@ -168,17 +191,8 @@ function AccountRows({
               {account.number ? ` · ${account.number}` : ""}
               {account.hidden ? ` · ${t("accounts.hidden")}` : ""}
             </div>
-            {account.sync_warning ? (
-              <div className="small status error">
-                {syncReason(account.sync_warning)}
-                {account.source_synced_at ? ` · ${t("sync.since", { date: longDate(account.source_synced_at) })}` : ""}
-              </div>
-            ) : (
-              account.source_synced_at && (
-                <div className="muted small">{t("sync.updated", { when: ago(account.source_synced_at) })}</div>
-              )
-            )}
           </span>
+          <LastUpdate account={account} />
           <span className="num">
             {account.balance == null ? "–" : money(amount(account.balance), account.currency ?? "EUR")}
           </span>

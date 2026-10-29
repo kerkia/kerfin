@@ -60,6 +60,7 @@ class Holding:
     unit_value_currency: str | None = None  # the security's quote currency, when it differs
     security_type: str | None = None  # as the source names it ("etf", "fund"...)
     fees: Decimal | None = None  # yearly ongoing charges, as a fraction (0.002 = 0.2%)
+    entry_fees: Decimal | None = None  # the fund's maximum entry fee, as a fraction
     annual_yield: Decimal | None = None  # yearly yield the source states for the line, as a fraction
     # How the security was found: "linked" by the source, or guessed from the order of the
     # source's answer ("order", "order_uncertain" when the counts differ); "unpaired": a
