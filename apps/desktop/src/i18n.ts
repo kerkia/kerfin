@@ -47,6 +47,7 @@ const en = {
   "fees.overTimeHelp": "Value lost to security and account fees of {rate} a year on today's investments, if they grew {growth} a year before fees, with nothing added or withdrawn.",
   "fees.holdings": "Holdings",
   "fees.holding": "Holding",
+  "fees.holdingsOf": "Holdings in {account}",
   "fees.allAccounts": "All accounts",
   "fees.filter": "Show the holdings of",
   "fees.rate": "Fees",
@@ -58,7 +59,7 @@ const en = {
   "fees.accountCol": "Account",
   "fees.contractRate": "Rate",
   "fees.accountsHelp":
-    "Life insurance and PER contracts' yearly fees, yours or the contract's published ones (marked *). Brokerage accounts' custody and trading fees aren't counted. Click an account to see its holdings.",
+    "Life insurance and PER contracts' yearly fees, yours or the contract's published ones (marked *). Brokerage accounts' custody and trading fees aren't counted. Click an account to see only its figures and holdings, and the total to see them all again.",
   "fees.sources":
     "Security fees: funds' ongoing charges from Finary; shares have none, and a euro fund's are its contract's.",
   "income.expected": "Income over the next 12 months",

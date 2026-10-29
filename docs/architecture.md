@@ -134,7 +134,8 @@ assumed rate with and without them.
 
 The page keeps the two kinds apart: security fees (funds' charges) sit with each holding's
 income in the holdings table, which filters by account; account fees (the contracts') have
-their own table beside it.
+their own table beside it. Picking an account (or clicking it in that table) scopes the
+figures, charts and holdings to it; the total row goes back to all of them.
 
 `packages/core/src/income.ts` takes the distributions each security paid over the last
 year (per unit, from Yahoo Finance's quote data, kept for two years), for the units held

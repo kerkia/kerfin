@@ -48,21 +48,11 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
     const scoped = { ...market, holdings: market.holdings.filter((h) => visible.has(h.account_id)) };
     const fees = feeSummary(scoped, overview.accounts);
     const income = incomeLines(scoped, today);
-    return {
-      fees,
-      income,
-      incomeOf: new Map(income.map((line): [MarketHolding, IncomeLine] => [line.holding, line])),
-      calendar: incomeCalendar(income, today),
-    };
+    return { today, fees, income, incomeOf: new Map(income.map((line): [MarketHolding, IncomeLine] => [line.holding, line])) };
   }, [market, overview]);
 
   if (!overview || !figures) return <h1>{t("nav.income")}</h1>;
-  const { fees, income, incomeOf, calendar } = figures;
-  const yearlyFees = fees.fundFees + fees.contractFees;
-  const feeRate = yearlyFees / (fees.value || 1);
-  const expected = income.reduce((sum, line) => sum + line.yearly, 0);
-  const reinvested = income.filter((line) => line.source === "reinvested");
-  const stated = income.filter((line) => line.source === "stated").reduce((sum, line) => sum + line.yearly, 0);
+  const { today, fees, incomeOf } = figures;
 
   if (fees.value === 0) {
     return (
@@ -77,8 +67,29 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
     );
   }
 
-  // Holdings, largest first, of the account picked (an account gone since shows them all).
-  const shown = fees.accounts.some((a) => a.account.id === accountId) ? accountId : "";
+  // Everything but the account fees table follows the account picked (all of them when it is
+  // gone since).
+  const selected = fees.accounts.find((a) => a.account.id === accountId);
+  const shown = selected?.account.id ?? "";
+  const scope = selected
+    ? {
+        value: selected.value,
+        fundFees: selected.fundFees,
+        contractFees: selected.contractFees,
+        insured: INSURED_KINDS.has(selected.account.kind) ? selected.value : 0,
+        fundUnknown: selected.fundUnknown,
+        contractsUnknown: fees.contractsUnknown.filter((a) => a.id === shown),
+      }
+    : fees;
+  const income = figures.income.filter((line) => !shown || line.holding.account_id === shown);
+  const calendar = incomeCalendar(income, today);
+  const yearlyFees = scope.fundFees + scope.contractFees;
+  const feeRate = yearlyFees / (scope.value || 1);
+  const expected = income.reduce((sum, line) => sum + line.yearly, 0);
+  const reinvested = income.filter((line) => line.source === "reinvested");
+  const stated = income.filter((line) => line.source === "stated").reduce((sum, line) => sum + line.yearly, 0);
+
+  // Holdings, largest first.
   const rows = fees.lines.filter((line) => !shown || line.holding.account_id === shown).sort((a, b) => b.value - a.value);
   const rowTotal = (pick: (row: (typeof rows)[number]) => number) => rows.reduce((sum, row) => sum + pick(row), 0);
   const security = (row: (typeof rows)[number]) => row.value * (row.fundRate ?? 0);
@@ -87,38 +98,48 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
 
   return (
     <>
-      <h1>{t("nav.income")}</h1>
+      <div className="page-header">
+        <h1>{t("nav.income")}</h1>
+        <select className="input compact" aria-label={t("fees.filter")} value={shown} onChange={(e) => setAccountId(e.target.value)}>
+          <option value="">{t("fees.allAccounts")}</option>
+          {fees.accounts.map((a) => (
+            <option key={a.account.id} value={a.account.id}>
+              {a.account.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="kpi-row">
         <Kpi
           label={t("fees.security")}
-          value={whole(fees.fundFees)}
-          detail={t("fees.ofValue", { rate: rate(fees.fundFees / (fees.value || 1)), value: whole(fees.value) })}
+          value={whole(scope.fundFees)}
+          detail={t("fees.ofValue", { rate: rate(scope.fundFees / (scope.value || 1)), value: whole(scope.value) })}
         />
         <Kpi
           label={t("fees.account")}
-          value={whole(fees.contractFees)}
-          detail={fees.insured > 0 ? t("fees.ofInsured", { rate: rate(fees.contractFees / fees.insured), value: whole(fees.insured) }) : t("fees.noInsured")}
+          value={whole(scope.contractFees)}
+          detail={scope.insured > 0 ? t("fees.ofInsured", { rate: rate(scope.contractFees / scope.insured), value: whole(scope.insured) }) : t("fees.noInsured")}
         />
-        <Kpi label={t("income.expected")} value={whole(expected)} detail={t("fees.ofValue", { rate: rate(expected / (fees.value || 1)), value: whole(fees.value) })} />
+        <Kpi label={t("income.expected")} value={whole(expected)} detail={t("fees.ofValue", { rate: rate(expected / (scope.value || 1)), value: whole(scope.value) })} />
         <Kpi label={t("income.net")} value={money(expected - yearlyFees, "EUR", { maximumFractionDigits: 0, signDisplay: "exceptZero" })} detail={t("income.netHelp")} />
       </div>
 
-      {(fees.contractsUnknown.length > 0 || fees.fundUnknown > 0) && (
+      {(scope.contractsUnknown.length > 0 || scope.fundUnknown > 0) && (
         <div className="banner">
           <div>
-            {fees.contractsUnknown.length > 0 && (
+            {scope.contractsUnknown.length > 0 && (
               <p style={{ margin: 0 }}>
-                {t("fees.contractsUnknown", { names: fees.contractsUnknown.map((a) => a.label).join(", ") })}
+                {t("fees.contractsUnknown", { names: scope.contractsUnknown.map((a) => a.label).join(", ") })}
               </p>
             )}
-            {fees.fundUnknown > 0 && (
-              <p className="small" style={{ margin: fees.contractsUnknown.length ? "4px 0 0" : 0 }}>
-                {t("fees.fundUnknown", { value: whole(fees.fundUnknown) })}
+            {scope.fundUnknown > 0 && (
+              <p className="small" style={{ margin: scope.contractsUnknown.length ? "4px 0 0" : 0 }}>
+                {t("fees.fundUnknown", { value: whole(scope.fundUnknown) })}
               </p>
             )}
           </div>
-          {fees.contractsUnknown.length > 0 && (
+          {scope.contractsUnknown.length > 0 && (
             <button className="btn small" onClick={() => onNavigate("accounts")}>
               {t("fees.setInAccounts")}
             </button>
@@ -155,7 +176,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
             {HORIZONS.map((years) => (
               <div key={years}>
                 <div className="hero-label">{t("fees.years", { n: years })}</div>
-                <div className="kpi-value num">{whole(feeCost(fees.value, feeRate, growth, years))}</div>
+                <div className="kpi-value num">{whole(feeCost(scope.value, feeRate, growth, years))}</div>
               </div>
             ))}
           </div>
@@ -189,15 +210,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
       <div className="split-tables">
         <section className="card">
           <div className="card-header">
-            <h2>{t("fees.holdings")}</h2>
-            <select className="input compact" aria-label={t("fees.filter")} value={shown} onChange={(e) => setAccountId(e.target.value)}>
-              <option value="">{t("fees.allAccounts")}</option>
-              {fees.accounts.map((a) => (
-                <option key={a.account.id} value={a.account.id}>
-                  {a.account.label}
-                </option>
-              ))}
-            </select>
+            <h2>{selected ? t("fees.holdingsOf", { account: selected.account.label }) : t("fees.holdings")}</h2>
           </div>
           <div className="table-scroll">
             <table className="table portfolio">
@@ -304,7 +317,7 @@ export function FeesIncomePage({ onNavigate }: { onNavigate: (page: "accounts") 
                     <td className="right num">{row.contractFees > 0 ? whole(row.contractFees) : <span className="muted">—</span>}</td>
                   </tr>
                 ))}
-                <tr className="total-row">
+                <tr className={shown ? "total-row clickable" : "total-row clickable selected"} onClick={() => setAccountId("")}>
                   <td>{t("fees.total")}</td>
                   <td className="right num">{whole(fees.value)}</td>
                   <td />
