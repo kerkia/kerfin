@@ -99,7 +99,11 @@ Classification (`packages/core/src/investments.ts`): a fund or note named after 
 holds the resource itself when the register says so (ETCs, notes, commodity funds) or its
 name says physical; otherwise it holds the producers. UCITS funds can't own metal, so a
 "gold" fund holds gold miners. A company's theme comes from its industry (oil & gas, gold,
-uranium…). Sectors follow GICS as MSCI's factsheets name them: gold miners are Materials.
+uranium…). Sectors follow GICS as MSCI's factsheets name them, with one addition:
+"Precious Metals Mining" (gold, silver and other precious metals miners) apart from the
+rest of Materials. Index weights get the same split from the MSCI World Materials
+factsheet's sub-industries: exactly for MSCI World, approximately for ACWI; other indices
+keep Materials whole.
 Commodities held as such have no sector or country and are left out of those breakdowns.
 
 Fund composition (country, sector) comes from the index each equity fund follows,

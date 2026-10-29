@@ -23,10 +23,11 @@
     "Consumer Discretionary": 8.43,
     "Communication Services": 7.5,
     "Consumer Staples": 4.47,
-    "Materials": 4.06,
+    "Materials": 3.3,
     "Energy": 4.02,
     "Utilities": 2.28,
-    "Real Estate": 2.08
+    "Real Estate": 2.08,
+    "Precious Metals Mining": 0.76
    }
   },
   {
@@ -53,9 +54,10 @@
     "Communication Services": 8.01,
     "Consumer Staples": 4.51,
     "Energy": 3.96,
-    "Materials": 3.51,
+    "Materials": 2.85,
     "Utilities": 2.25,
-    "Real Estate": 1.45
+    "Real Estate": 1.45,
+    "Precious Metals Mining": 0.66
    }
   },
   {
@@ -140,9 +142,10 @@
     "Communication Services": 8.31,
     "Consumer Staples": 4.77,
     "Energy": 4.03,
-    "Materials": 3.21,
+    "Materials": 2.61,
     "Utilities": 2.3,
-    "Real Estate": 1.52
+    "Real Estate": 1.52,
+    "Precious Metals Mining": 0.6
    }
   },
   {
@@ -423,8 +426,10 @@
     "Other": 16.69
    },
    "sectors": {
-    "Materials": 100.0
-   }
+    "Materials": 81.32,
+    "Precious Metals Mining": 18.68
+   },
+   "precious_mining_share": 0.1868
   },
   {
    "id": "msci-world-industrials",

@@ -7,6 +7,7 @@ import {
   composition,
   holdingsHistory,
   indexOf,
+  PRECIOUS_MINING,
   pricedHoldings,
   returns,
   themeOf,
@@ -264,10 +265,35 @@ describe("themes", () => {
     expect(indexOf(holding("Core MSCI World", "1"), m.indices, security("X13", "CEOGES"))?.id).toBe("msci-world");
   });
 
-  it("puts miners in the Materials sector and leaves their countries unknown", () => {
+  it("puts precious metals miners in their own sector and leaves their countries unknown", () => {
     const m = market({ holdings: [holding("Junior Gold Miners UCITS ETF", "100")], securities: {}, prices: {} });
-    expect(composition(m, m.holdings[0]!, "sectors")).toEqual({ Materials: 1 });
+    expect(composition(m, m.holdings[0]!, "sectors")).toEqual({ [PRECIOUS_MINING]: 1 });
     expect(composition(m, m.holdings[0]!, "countries")).toBeNull();
     expect(themes(m)).toEqual({ slices: [{ key: "miners", value: 100 }], total: 100 });
+  });
+
+  it("puts a gold mining company in precious metals mining, other miners in Materials", () => {
+    const m = market({
+      holdings: [holding("Gold Mining Co", "10", "X10"), holding("Copper Co", "10", "X14")],
+      securities: {
+        X10: security("X10", "ESVUFR", { quote_type: "EQUITY", sector: "Basic Materials", industry: "Gold" }),
+        X14: security("X14", "ESVUFR", { quote_type: "EQUITY", sector: "Basic Materials", industry: "Copper" }),
+      },
+      prices: {},
+    });
+    expect(composition(m, m.holdings[0]!, "sectors")).toEqual({ [PRECIOUS_MINING]: 1 });
+    expect(composition(m, m.holdings[1]!, "sectors")).toEqual({ Materials: 1 });
+  });
+
+  it("splits a materials fund as its sector index does", () => {
+    const materials: IndexProfile = {
+      ...WORLD,
+      id: "msci-world-materials",
+      match: "(?!)",
+      sector: "Materials",
+      sectors: { Materials: 80, [PRECIOUS_MINING]: 20 },
+    };
+    const m = market({ holdings: [holding("MSCI World Materials UCITS ETF", "100")], securities: {}, prices: {}, indices: [WORLD, materials] });
+    expect(composition(m, m.holdings[0]!, "sectors")).toEqual({ Materials: 0.8, [PRECIOUS_MINING]: 0.2 });
   });
 });

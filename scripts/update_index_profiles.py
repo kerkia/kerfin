@@ -80,6 +80,23 @@ SECTOR_INDICES = [
 
 WEIGHT = re.compile(r"([A-Z][A-Za-z.&,' -]+?) (\d+(?:\.\d+)?)%")
 
+# Kerfin shows the mining of precious metals apart from the rest of Materials. The MSCI World
+# Materials factsheet gives its sub-industries; their share splits MSCI World's Materials
+# exactly (same companies) and ACWI's approximately. Other indices keep Materials whole.
+PRECIOUS_MINING = "Precious Metals Mining"
+PRECIOUS_SUB_INDUSTRIES = {"Gold", "Silver", "Precious Metals & Minerals"}
+SPLIT_MATERIALS = {"msci-world", "msci-acwi", "msci-acwi-imi"}
+
+
+def split_materials(sectors: dict[str, float], share: float) -> dict[str, float]:
+    """`sectors` with `share` of Materials moved to precious metals mining (once)."""
+    if PRECIOUS_MINING in sectors or "Materials" not in sectors:
+        return sectors
+    materials = sectors["Materials"]
+    split = {**sectors, "Materials": round(materials * (1 - share), 2)}
+    split[PRECIOUS_MINING] = round(materials * share, 2)
+    return split
+
 
 def weights(text: str, title: str) -> dict[str, float]:
     """The "Name 12.3%" pairs of a factsheet section, which ends at its first bare figure."""
@@ -117,7 +134,14 @@ def profile(
             else {SINGLE_COUNTRY[index_id]: 100.0}
         ),
         "sectors": {sector: 100.0} if sector else weights(text, "SECTOR WEIGHTS"),
+        **({"precious_mining_share": precious_share(text)} if sector == "Materials" else {}),
     }
+
+
+def precious_share(text: str) -> float:
+    """The share of a materials index in precious metals mining, from its sub-industries."""
+    found = weights(text, "SUB-INDUSTRY WEIGHTS")
+    return round(sum(w for name, w in found.items() if name in PRECIOUS_SUB_INDUSTRIES) / 100, 4)
 
 
 def main() -> int:
@@ -136,6 +160,13 @@ def main() -> int:
             failed.append(f"{index_id}: {error}")
             if index_id in previous:
                 profiles.append({**previous[index_id], "match": pattern, "approximate": approximate})
+    materials = next((p for p in profiles if p["id"] == "msci-world-materials"), None)
+    if materials and "precious_mining_share" in materials:
+        share = float(materials["precious_mining_share"])
+        materials["sectors"] = split_materials({"Materials": 100.0}, share)
+        for p in profiles:
+            if p["id"] in SPLIT_MATERIALS:
+                p["sectors"] = split_materials(p["sectors"], share)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps({"indices": profiles}, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"{len(profiles)} index profiles written to {OUT}")

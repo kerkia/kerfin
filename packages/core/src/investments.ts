@@ -102,7 +102,7 @@ const THEME_PATTERNS: [RegExp, Theme][] = [
 
 // A company's theme, from its industry (Yahoo Finance's names, as Morningstar's).
 const INDUSTRY_THEMES: [RegExp, Theme][] = [
-  [/^gold$|precious metals/i, "miners"],
+  [/^gold$|silver|precious metals/i, "miners"],
   [/uranium/i, "uranium"],
   [/^oil & gas|coal/i, "energy"],
   [/copper|alumin|steel|industrial metals/i, "industrial_metals"],
@@ -122,9 +122,16 @@ const COMPANY_HINT = /equity|equities|\bactions?\b|msci|s&p|stoxx|ftse|sector|pr
 // UCITS funds can't own commodities: a fund about gold owns gold miners.
 const FUND_HINT = /\bfunds?\b|\bfonds\b|sicav|\bfcp\b|ucits/i;
 const PHYSICAL_HINT = /physical|physique|\betc\b|\betn\b/i;
+/**
+ * Kerfin's one sector beyond GICS's: the mining of precious metals, apart from the rest of
+ * Materials (chemicals, construction materials, base metals...). Index profiles split their
+ * Materials weight accordingly where MSCI publishes the data (see update_index_profiles.py).
+ */
+export const PRECIOUS_MINING = "Precious Metals Mining";
+const PRECIOUS_INDUSTRY = /^gold$|silver|precious metals/i;
 // The sector of funds that hold companies of one industry.
 const THEME_SECTORS: Partial<Record<Theme, string>> = {
-  miners: "Materials",
+  miners: PRECIOUS_MINING,
   rare_earths: "Materials",
   industrial_metals: "Materials",
   uranium: "Energy",
@@ -258,9 +265,12 @@ function fundProfile(holding: MarketHolding, indices: IndexProfile[], security?:
   }
   // Mining companies are spread unlike the world's materials companies: no countries.
   if (theme && theme !== "energy") return { ...none, sectors: { [sector]: 1 } };
+  const sectorIndex = indices.find((i) => i.sector === sector) ?? null;
   const regional = broad && !WORLDWIDE.has(broad.id) ? { ...broad, approximate: true } : null;
-  const index = regional ?? indices.find((i) => i.sector === sector) ?? null;
-  return { index, sectors: { [sector]: 1 }, countries: index ? fractions(index.countries) : null };
+  const index = regional ?? sectorIndex;
+  // The sector index's own split (a materials fund holds some precious metals miners).
+  const sectors = sectorIndex ? fractions(sectorIndex.sectors) : { [sector]: 1 };
+  return { index, sectors, countries: index ? fractions(index.countries) : null };
 }
 
 /** The index a fund follows or resembles (equity funds only). */
@@ -344,7 +354,9 @@ export function composition(
     const key =
       dimension === "countries"
         ? (security?.country ?? isinCountry(holding.isin))
-        : security?.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
+        : PRECIOUS_INDUSTRY.test(security?.industry ?? "")
+          ? PRECIOUS_MINING
+          : security?.sector && (SECTOR_NAMES[security.sector] ?? security.sector);
     return key ? { [key]: 1 } : null;
   }
   return fundProfile(holding, market.indices, security)[dimension];
