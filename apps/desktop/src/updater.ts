@@ -1,11 +1,11 @@
 // Automatic updates from GitHub Releases, verified against the public key in tauri.conf.json.
 import { isTauri } from "@tauri-apps/api/core";
 import type { Update } from "@tauri-apps/plugin-updater";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { stopEngine } from "./engine";
 
-const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+const CHECK_EVERY_MS = 60 * 60 * 1000;
 
 export type UpdateState =
   | { kind: "unsupported" } // running in a browser during development
@@ -29,8 +29,8 @@ async function install(update: Update): Promise<void> {
 }
 
 /**
- * Checks at start and every few hours. `autoInstall` says whether installing right away
- * is harmless (nothing unlocked, nothing in progress); otherwise the user restarts.
+ * Checks at start, on each unlock and every hour. `autoInstall` says whether installing
+ * right away is harmless (nothing unlocked, nothing in progress); otherwise the user restarts.
  */
 export function useUpdater(autoInstall: boolean) {
   const [state, setState] = useState<UpdateState>(isTauri() ? { kind: "idle" } : { kind: "unsupported" });
@@ -64,6 +64,14 @@ export function useUpdater(autoInstall: boolean) {
     const timer = setInterval(() => void checkNow(), CHECK_EVERY_MS);
     return () => clearInterval(timer);
   }, [checkNow]);
+
+  // Unlocking is when the user starts looking at Kerfin: a release published since the last
+  // check shows then rather than hours later.
+  const wasLocked = useRef(false);
+  useEffect(() => {
+    if (wasLocked.current && !autoInstall) void checkNow();
+    wasLocked.current = autoInstall;
+  }, [autoInstall, checkNow]);
 
   useEffect(() => {
     if (update && autoInstall && state.kind === "available") void apply(update);

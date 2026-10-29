@@ -97,10 +97,16 @@ select {
 
 /* Layout */
 
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
 .shell {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 210px 1fr;
-  height: 100vh;
 }
 .sidebar {
   background: var(--sidebar);
@@ -568,19 +574,25 @@ table.table {
   user-select: all;
 }
 
-/* App-wide notice that an update waits for a restart, pinned above every page */
+/* App-wide notice that an update waits for a restart: the window's top row, outside the
+   scrolling page, solid so nothing shows through it */
 .update-bar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  flex: none;
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 16px;
   padding: 8px 24px;
-  background: var(--accent-wash);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(8px);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.update-bar .btn {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+  color: var(--accent);
 }
 
 /* Portfolio overview */
