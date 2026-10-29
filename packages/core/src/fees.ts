@@ -26,6 +26,7 @@ export interface FeeLine {
   holding: MarketHolding;
   account: Account | undefined;
   value: number; // euros
+  euroFund: boolean; // a euro fund, whose fees are its contract's
   fundRate: number | null; // the fund's ongoing charges; 0 for shares and euro funds; null when unknown
   contract: ContractRate | null;
   yearly: number; // euros a year, from the rates known
@@ -37,6 +38,7 @@ export interface AccountFees {
   fundFees: number; // euros a year
   contractFees: number; // euros a year
   contract: ContractRate | null; // on its funds (the euro fund's may differ)
+  euroFund: number; // euros in its euro fund
   fundUnknown: number; // euros in funds whose charges aren't known
 }
 
@@ -46,6 +48,7 @@ export interface FeeSummary {
   value: number; // euros considered
   fundFees: number;
   contractFees: number;
+  insured: number; // euros in life insurance and PER contracts, which bear contract fees
   fundUnknown: number; // euros in funds whose charges aren't known
   contractsUnknown: Account[]; // life insurance and PER contracts without known fees
 }
@@ -54,6 +57,7 @@ export interface FeeSummary {
 export function feeSummary(market: Market, accounts: Account[]): FeeSummary {
   const byId = new Map(accounts.filter((a) => !a.hidden).map((a): [string, Account] => [a.id, a]));
   const lines: FeeLine[] = [];
+  const euroValues = new Map<string, number>();
   for (const holding of market.holdings) {
     const account = byId.get(holding.account_id);
     const value = amount(holding.valuation);
@@ -65,7 +69,8 @@ export function feeSummary(market: Market, accounts: Account[]): FeeSummary {
     const known = euroFund || isCompanyShare(holding, security) ? 0 : null;
     const fundRate = holding.fees !== null ? amount(holding.fees) : known;
     const contract = contractRate(account, euroFund);
-    lines.push({ holding, account, value, fundRate, contract, yearly: value * ((fundRate ?? 0) + (contract?.rate ?? 0)) });
+    lines.push({ holding, account, value, euroFund, fundRate, contract, yearly: value * ((fundRate ?? 0) + (contract?.rate ?? 0)) });
+    if (euroFund) euroValues.set(account.id, (euroValues.get(account.id) ?? 0) + value);
   }
 
   const perAccount = new Map<string, AccountFees>();
@@ -77,6 +82,7 @@ export function feeSummary(market: Market, accounts: Account[]): FeeSummary {
       fundFees: 0,
       contractFees: 0,
       contract: contractRate(account, false),
+      euroFund: euroValues.get(account.id) ?? 0,
       fundUnknown: 0,
     };
     entry.value += line.value;
@@ -97,6 +103,7 @@ export function feeSummary(market: Market, accounts: Account[]): FeeSummary {
       fundFees: 0,
       contractFees: value * (contract?.rate ?? 0),
       contract,
+      euroFund: 0,
       fundUnknown: value,
     });
   }
@@ -109,6 +116,7 @@ export function feeSummary(market: Market, accounts: Account[]): FeeSummary {
     value: total("value"),
     fundFees: total("fundFees"),
     contractFees: total("contractFees"),
+    insured: all.filter((a) => INSURED_KINDS.has(a.account.kind)).reduce((sum, a) => sum + a.value, 0),
     fundUnknown: total("fundUnknown"),
     contractsUnknown: all.filter((a) => INSURED_KINDS.has(a.account.kind) && !a.contract).map((a) => a.account),
   };

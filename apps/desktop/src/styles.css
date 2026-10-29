@@ -1002,8 +1002,17 @@ th:hover .sort-mark.idle {
 
 /* Fees & income */
 
-.section-title {
-  margin-top: 12px;
+/* Holdings beside the accounts, when the window is wide enough for both */
+.split-tables {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1200px) {
+  .split-tables {
+    grid-template-columns: 1fr;
+  }
 }
 .kpi-row.compact {
   grid-template-columns: repeat(3, 1fr);

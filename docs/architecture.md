@@ -127,8 +127,14 @@ is. The analytics are in `packages/core/src/investments.ts`.
 and PER, the contract's management fee. The user sets a contract's rate in Accounts; until
 then Kerfin suggests the contract's published fees from
 `engine/src/kerfin_engine/data/contract_fees.json` (researched from the brokers' product
-pages, with each source and date), matched on the account's name. What fees cost over 10,
-20 and 30 years compares today's value grown at an assumed rate with and without them.
+pages, with each source and date), matched on the account's name; a contract without a
+published fee table can be an alias of a close one (the first Linxea Avenir uses Linxea
+Avenir 2's). What fees cost over 10, 20 and 30 years compares today's value grown at an
+assumed rate with and without them.
+
+The page keeps the two kinds apart: security fees (funds' charges) sit with each holding's
+income in the holdings table, which filters by account; account fees (the contracts') have
+their own table beside it.
 
 `packages/core/src/income.ts` takes the distributions each security paid over the last
 year (per unit, from Yahoo Finance's quote data, kept for two years), for the units held

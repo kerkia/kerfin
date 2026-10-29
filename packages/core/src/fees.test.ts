@@ -76,6 +76,8 @@ describe("fees", () => {
     ]);
     expect(summary.fundUnknown).toBe(1000);
     expect(summary.accounts.map((a) => a.account.id)).toEqual(["av", "cto"]);
+    expect(summary.accounts[0]!.euroFund).toBe(5000);
+    expect(summary.insured).toBe(15000);
     expect(summary.contractsUnknown).toEqual([]);
   });
 

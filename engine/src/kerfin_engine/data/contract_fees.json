@@ -21,7 +21,8 @@
    "aliases": [
     "Avenir 2",
     "Linxea Avenir 2+",
-    "LINXEA AVENIR 2+"
+    "LINXEA AVENIR 2+",
+    "Linxea Avenir"
    ],
    "kind": "life_insurance",
    "distributor": "Linxea",
@@ -30,7 +31,7 @@
    "euro_fee": 0.6,
    "source": "https://www.linxea.com/document/linxea-avenir-2-conditions-generales/ (Conditions Contractuelles Avril 2022); https://www.linxea.com/document/contrat-linxea-avenir-2-plus-tableau-des-frais/ (mis a jour le 07/10/2026); https://www.linxea.com/assurance-vie/linxea-avenir-2/",
    "as_of": "2026-10-07",
-   "notes": "euro_fee is for fonds Suravenir Rendement 2 (0,60%). Fonds Suravenir Opportunites 2: '3,00% maximum'. Mandat d'arbitrage (gestion pilotee, e.g. Amundi ETF): +0,39%/yr on UC (Linxea states 0,99% max total on UC); OTEA: +0,20%. The fee table is titled 'LINXEA AVENIR 2+' (contrat n°2284) and is the one linked from the Avenir 2 page."
+   "notes": "euro_fee is for fonds Suravenir Rendement 2 (0,60%). Fonds Suravenir Opportunites 2: '3,00% maximum'. Mandat d'arbitrage (gestion pilotee, e.g. Amundi ETF): +0,39%/yr on UC (Linxea states 0,99% max total on UC); OTEA: +0,20%. The fee table is titled 'LINXEA AVENIR 2+' (contrat n°2284) and is the one linked from the Avenir 2 page. The first Linxea Avenir (closed to new subscribers, also Suravenir) has no fee table online: Avenir 2's fees are used as an estimate for it."
   },
   {
    "name": "Linxea Vie",
