@@ -85,6 +85,47 @@ const en = {
   "sync.since": "last updated {date}",
   "sync.help": "Their figures are as of that date. Reconnect them in Finary, then sync Kerfin again.",
   "budget.allAccounts": "All accounts",
+  "budget.import": "Import transactions",
+  "budget.editCategories": "Categories",
+  "budget.categoryHelp": "Applies to every transaction from {payee}",
+  "budget.origin.yours": "yours",
+  "budget.origin.transfer": "between your accounts",
+  "budget.origin.kerfin": "Kerfin",
+  "budget.origin.bank": "bank",
+  "budget.origin.none": "not recognised",
+  "budget.resetCategory": "Back to Kerfin's choice",
+  "import.title": "Import transactions",
+  "import.help":
+    "Choose a CSV export from BoursoBank (Mes comptes › Exporter). It includes the accounts BoursoBank aggregates. Leave \"inclure les documents\" unchecked.",
+  "import.unreadable": "This file isn't a BoursoBank CSV export Kerfin can read.",
+  "import.failed": "The import failed. Try again, or export the file again.",
+  "import.found": "{n} accounts in the file. Choose where each one's transactions go.",
+  "import.account": "In the file",
+  "import.period": "Period",
+  "import.in": "In",
+  "import.out": "Out",
+  "import.into": "Import into",
+  "import.count": "{n} transactions",
+  "import.new": "A new account",
+  "import.skip": "Don't import",
+  "import.replaceHelp":
+    "The file's transactions replace the account's over the days it covers: importing overlapping files never doubles them. Accounts entered by hand take the file's balance.",
+  "import.save": "Import",
+  "categories.title": "Categories",
+  "categories.help":
+    "Rename Kerfin's categories, add your own, or remove those you don't use. Transactions of a removed category go back to Kerfin's choice.",
+  "categories.name": "Name",
+  "categories.kind": "Counts as",
+  "categories.kind.spending": "Spending",
+  "categories.kind.income": "Income",
+  "categories.kind.excluded": "Not counted",
+  "categories.remove": "Remove",
+  "categories.required": "Needed by Kerfin's rules: it can be renamed only",
+  "categories.new": "New category",
+  "categories.add": "Add",
+  "categories.reset": "Kerfin's list",
+  "categories.save": "Save",
+  "categories.failed": "Saving failed. Try again.",
   "budget.account": "Show the budget of",
   "budget.period": "Period",
   "budget.months": "Last {n} months",
@@ -99,7 +140,6 @@ const en = {
   "budget.byMonthHelp": "The current month is still under way.",
   "budget.byCategory": "By category",
   "budget.byCategoryHelp": "Click a category to see its transactions.",
-  "budget.uncategorised": "Uncategorised",
   "budget.payees": "Where the money goes",
   "budget.payee": "Payee",
   "budget.count": "Payments",
@@ -116,7 +156,8 @@ const en = {
   "budget.empty":
     "No transactions yet. Kerfin reads them from Finary at each sync, for the current accounts Finary's budget covers.",
   "budget.finarySays": "Finary says: {note}",
-  "budget.sources": "Transactions as Finary lists them, without transfers between your own accounts.",
+  "budget.sources":
+    "Transactions from Finary, or from your bank's exports. Transfers between your own accounts don't count as spending. Changing a transaction's category sets it for every transaction from that payee.",
   "types.title": "Account types",
   "types.shares": "Share of each type",
   "types.amounts": "Amount by type",
@@ -373,6 +414,34 @@ const en = {
 } as const;
 
 export type MessageKey = keyof typeof en;
+
+// Kerfin's own spending categories (see packages/core/src/categories.ts).
+const categoryNames: Record<string, string> = {
+  income: "Income",
+  housing: "Housing",
+  utilities: "Energy & water",
+  groceries: "Groceries",
+  restaurants: "Restaurants",
+  transport: "Transport",
+  travel: "Travel",
+  shopping: "Shopping",
+  health: "Health",
+  leisure: "Leisure",
+  subscriptions: "Phone, internet & subscriptions",
+  insurance: "Insurance",
+  taxes: "Taxes",
+  bank_fees: "Bank fees",
+  cash: "Cash",
+  education: "Children & education",
+  gifts: "Gifts & donations",
+  transfers: "Transfers between my accounts",
+  other: "Other",
+};
+
+/** A category's name: the user's, else Kerfin's. */
+export function categoryName(category: { key: string; label?: string | null }): string {
+  return category.label || categoryNames[category.key] || category.key;
+}
 
 const kinds: Record<AccountKind, string> = {
   checking: "Current account",

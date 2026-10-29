@@ -1015,6 +1015,13 @@ th:hover .sort-mark.idle {
 
 /* Fees & income */
 
+/* Budget: a transaction's category, changed in place */
+.category-pick {
+  width: auto;
+  max-width: 230px;
+  padding: 3px 6px;
+}
+
 /* Holdings beside the accounts, when the window is wide enough for both */
 .split-tables {
   display: grid;

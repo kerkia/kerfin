@@ -100,6 +100,8 @@ export interface Transaction {
   currency: string | null;
   pending: boolean;
   category?: string | null; // the source's spending category
+  category_parent?: string | null; // its broader category, when the source has two levels
+  payee?: string | null; // the merchant's name as the source cleans it up
 }
 
 /** Why a source lists no transactions, in its words (Finary: its plan, its budget set-up...). */
@@ -107,6 +109,19 @@ export interface TransactionsNotice {
   connection_id: string;
   availability: string;
   note: string;
+}
+
+/** An account found in a bank's export, and where its transactions would go. */
+export interface ImportAccount {
+  number: string;
+  label: string;
+  count: number;
+  first: string; // YYYY-MM-DD
+  last: string;
+  income: string;
+  spending: string;
+  balance: string | null;
+  target: string | null; // the account it went to last time, or of the same name
 }
 
 /** A transaction of any account, as the budget reads them. */

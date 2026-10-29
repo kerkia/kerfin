@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import threading
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import test_bank_export
 from conftest import NoMarket
 
 from kerfin_engine import institutions, paths
@@ -128,6 +130,38 @@ def test_manual_account_persists_across_lock(api: Any) -> None:
     [account] = api("GET", "/api/overview")["accounts"]
     assert account["balance"] == "1300" and account["currency"] == "EUR"
     assert api("POST", "/api/accounts", {**body, "kind": "bogus"})["status"] == 400
+
+
+def test_a_bank_export_is_previewed_then_imported(api: Any) -> None:
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    data = base64.b64encode(test_bank_export.export(*test_bank_export.LINES)).decode()
+
+    preview = api("POST", "/api/imports/preview", {"data": data})["accounts"]
+    assert [(a["label"], a["count"], a["spending"], a["target"]) for a in preview] == [
+        ("COMPTE BANCAIRE", 2, "42.10", None),
+        ("Carte Amex", 1, "310.00", None),
+    ]
+    targets = {preview[0]["number"]: "new", preview[1]["number"]: "skip"}
+    assert api("POST", "/api/imports", {"data": data, "targets": targets})["imported"] == 2
+    answer = api("GET", "/api/transactions")
+    assert [t["payee"] for t in answer["transactions"]] == ["Some Grocer", "Employer"]
+
+    api("PUT", "/api/category-rules", {"payee_key": "some grocer", "category": "groceries"})
+    assert api("GET", "/api/transactions")["rules"] == {"some grocer": "groceries"}
+    assert api("GET", "/api/transactions")["categories"] is None  # Kerfin's own
+    mine = [
+        {"key": "my_food", "kind": "spending", "label": "Food"},
+        {"key": "transfers", "kind": "excluded"},
+        {"key": "other", "kind": "spending", "label": "Misc"},
+    ]
+    assert api("PUT", "/api/categories", {"categories": mine}) == {}
+    answer = api("GET", "/api/transactions")
+    assert [c["label"] for c in answer["categories"]] == ["Food", None, "Misc"]
+    assert answer["rules"] == {}  # "groceries" is gone, and its rule with it
+    assert api("PUT", "/api/categories", {"categories": mine[:1]})["status"] == 400  # transfers, other needed
+    assert api("POST", "/api/imports/preview", {"data": "not base64!"})["status"] == 400
+    bad = base64.b64encode(b"a,b\n1,2\n").decode()
+    assert api("POST", "/api/imports/preview", {"data": bad})["error"]["code"] == "unreadable_export"
 
 
 def test_auto_lock_after_idle(api: Any) -> None:

@@ -2,9 +2,11 @@
 // reads synced, end-to-end encrypted data instead of a local engine.
 import type {
   AccountTransaction,
+  CategoryDef,
   EngineStatus,
   FinarySignInStatus,
   Holding,
+  ImportAccount,
   Institution,
   Job,
   Market,
@@ -87,7 +89,18 @@ export const engine = {
   overview: () => call<Overview>("GET", "/api/overview"),
   market: () => call<Market>("GET", "/api/market"),
   transactions: () =>
-    call<{ transactions: AccountTransaction[]; notices: TransactionsNotice[] }>("GET", "/api/transactions"),
+    call<{
+      transactions: AccountTransaction[];
+      notices: TransactionsNotice[];
+      rules: Record<string, string>;
+      categories: CategoryDef[] | null;
+    }>("GET", "/api/transactions"),
+  setCategoryRule: (payee_key: string, category: string | null) =>
+    call<object>("PUT", "/api/category-rules", { payee_key, category }),
+  setCategories: (categories: CategoryDef[]) => call<object>("PUT", "/api/categories", { categories }),
+  previewImport: (data: string) => call<{ accounts: ImportAccount[] }>("POST", "/api/imports/preview", { data }),
+  importExport: (data: string, targets: Record<string, string>) =>
+    call<{ imported: number }>("POST", "/api/imports", { data, targets }),
 
   addConnection: (institution: string, label: string, values: Record<string, string>, remember: boolean) =>
     call<{ connection_id: string; job: Job }>("POST", "/api/connections", {

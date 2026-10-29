@@ -112,8 +112,12 @@ CREATE TABLE transactions (
     amount TEXT NOT NULL,
     currency TEXT,
     pending INTEGER NOT NULL,
-    category TEXT                  -- the source's spending category
+    category TEXT,                 -- the source's spending category
+    category_parent TEXT,          -- its broader category, when the source has two levels
+    payee TEXT                     -- the merchant's name as the source cleans it up
 );
+-- The user's categories, by payee (see packages/core/src/categories.ts for the key).
+CREATE TABLE category_rules (payee_key TEXT PRIMARY KEY, category TEXT NOT NULL);
 CREATE INDEX transactions_by_account ON transactions(account_id, date);
 CREATE TABLE balance_history (
     account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -123,7 +127,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -164,6 +168,11 @@ MIGRATIONS = {
         "ALTER TABLE transactions ADD COLUMN category TEXT",
     ),
     9: ("ALTER TABLE holdings ADD COLUMN entry_fees TEXT",),
+    10: (
+        "ALTER TABLE transactions ADD COLUMN category_parent TEXT",
+        "ALTER TABLE transactions ADD COLUMN payee TEXT",
+        "CREATE TABLE category_rules (payee_key TEXT PRIMARY KEY, category TEXT NOT NULL)",
+    ),
 }
 
 
@@ -347,27 +356,72 @@ class Store:
                     )
                 if transactions:
                     # Websites only show a recent window: replace that window, keep older history.
-                    oldest = min(t.date for t in transactions).isoformat()
-                    db.execute(
-                        "DELETE FROM transactions WHERE account_id = ? AND date >= ?", (account_id, oldest)
-                    )
-                    db.executemany(
-                        "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        [
-                            (
-                                account_id,
-                                t.date.isoformat(),
-                                t.label,
-                                str(t.amount),
-                                t.currency,
-                                int(t.pending),
-                                t.category,
-                            )
-                            for t in transactions
-                        ],
-                    )
+                    self._replace_transactions(db, account_id, transactions, to=None)
                 count += 1
         return count
+
+    @staticmethod
+    def _replace_transactions(
+        db: sqlite3.Connection, account_id: str, transactions: list[Transaction], to: date | None
+    ) -> None:
+        """Replace an account's transactions from the oldest given on (up to `to`, when set)."""
+        oldest = min(t.date for t in transactions).isoformat()
+        db.execute(
+            "DELETE FROM transactions WHERE account_id = ? AND date >= ? AND (? IS NULL OR date <= ?)",
+            (account_id, oldest, _text(to), _text(to)),
+        )
+        db.executemany(
+            "INSERT INTO transactions (account_id, date, label, amount, currency, pending, category,"
+            " category_parent, payee) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    account_id,
+                    t.date.isoformat(),
+                    t.label,
+                    str(t.amount),
+                    t.currency,
+                    int(t.pending),
+                    t.category,
+                    t.category_parent,
+                    t.payee,
+                )
+                for t in transactions
+            ],
+        )
+
+    def import_transactions(self, account_id: str, transactions: list[Transaction]) -> None:
+        """Transactions from a file: they replace the account's over the days the file covers."""
+        if not transactions:
+            return
+        with self.transaction() as db:
+            if not db.execute("SELECT 1 FROM accounts WHERE id = ?", (account_id,)).fetchone():
+                raise KeyError(account_id)
+            self._replace_transactions(db, account_id, transactions, to=max(t.date for t in transactions))
+
+    def categories(self) -> list[dict[str, Any]] | None:
+        """The user's list of categories; None while it is Kerfin's own."""
+        value = self.setting("categories", "")
+        return json.loads(value) if value else None
+
+    def set_categories(self, categories: list[dict[str, Any]]) -> None:
+        """Replaces the list; the rules of categories no longer in it go."""
+        keys = [c["key"] for c in categories]
+        with self.transaction() as db:
+            db.execute("INSERT OR REPLACE INTO settings VALUES ('categories', ?)", (json.dumps(categories),))
+            db.execute(
+                f"DELETE FROM category_rules WHERE category NOT IN ({','.join('?' * len(keys))})", keys
+            )
+
+    def category_rules(self) -> dict[str, str]:
+        return {row["payee_key"]: row["category"] for row in self._rows("SELECT * FROM category_rules")}
+
+    def set_category_rule(self, payee_key: str, category: str | None) -> None:
+        """The user's category for a payee; None goes back to Kerfin's own."""
+        with self.transaction() as db:
+            if category is None:
+                db.execute("DELETE FROM category_rules WHERE payee_key = ?", (payee_key,))
+            else:
+                db.execute("INSERT OR REPLACE INTO category_rules VALUES (?, ?)", (payee_key, category))
 
     def _upsert_account(self, db: sqlite3.Connection, connection_id: str, account: Account) -> str:
         row = db.execute(
@@ -575,7 +629,8 @@ class Store:
 
     def transactions(self, account_id: str, limit: int = 100) -> list[dict[str, Any]]:
         rows = self._rows(
-            "SELECT date, label, amount, currency, pending, category FROM transactions WHERE account_id = ?"
+            "SELECT date, label, amount, currency, pending, category, category_parent, payee"
+            " FROM transactions WHERE account_id = ?"
             " ORDER BY date DESC LIMIT ?",
             account_id,
             limit,
@@ -595,7 +650,8 @@ class Store:
     def all_transactions(self, since: date) -> list[dict[str, Any]]:
         """Every account's transactions since `since`, newest first."""
         rows = self._rows(
-            "SELECT account_id, date, label, amount, currency, pending, category FROM transactions"
+            "SELECT account_id, date, label, amount, currency, pending, category, category_parent, payee"
+            " FROM transactions"
             " WHERE date >= ? ORDER BY date DESC, rowid",
             since.isoformat(),
         )

@@ -148,10 +148,24 @@ years count as reinvesting (accumulating funds).
 
 ## Budget
 
+Transactions come from Finary (on plans that include its budget) or from a bank's CSV export
+(`engine/src/kerfin_engine/bank_export.py`: BoursoBank's, which includes the accounts it
+aggregates). An import shows each account in the file and where it will go (an existing
+account, a new one, or none), remembers that by account number, and replaces the account's
+transactions over the days the file covers, so overlapping imports never double them.
+
+`packages/core/src/categories.ts` gives each transaction a category of Kerfin's own, in
+this order: the user's category for its payee; "transfers" for money moving between two of
+the user's accounts (the same amount out of one and into another within four days); Kerfin's
+rules for well-known merchants; the bank's category mapped onto Kerfin's; else "other". The
+payee is the bank's cleaned-up merchant name, else the label without card prefixes, dates and
+references. Changing a transaction's category sets it for its payee, so the correction sticks.
+The user can rename, add and remove categories and say what each counts as (spending, income,
+not counted); "transfers" and "other" can only be renamed.
+
 `packages/core/src/budget.ts` adds up the transactions of the accounts picked by calendar
-month: positive amounts are income, negative ones spending, by the source's category and by
-payee (the transaction's description). Averages leave out the current month, still under
-way.
+month: income, spending less refunds, by category and by payee. Averages leave out the
+current month, still under way.
 
 ## Connectors
 

@@ -1,13 +1,16 @@
 // The budget: income and spending a month, where the money goes by category and payee, and
-// the transactions behind them, from what Finary lists for the accounts its budget covers.
-import { UNCATEGORISED, amount, budget } from "@kerfin/core";
-import type { AccountTransaction, TransactionsNotice } from "@kerfin/core";
-import { useEffect, useMemo, useState } from "react";
+// the transactions behind them: from Finary (on plans with its budget) or bank exports.
+// Changing a transaction's category sets it for every transaction from its payee.
+import { DEFAULT_CATEGORIES, amount, budget } from "@kerfin/core";
+import type { AccountTransaction, Categorised, CategoryDef, TransactionsNotice } from "@kerfin/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CategoryEditor } from "../components/CategoryEditor";
 import { BarList, ColumnChart } from "../components/charts";
+import { ImportDialog } from "../components/ImportDialog";
 import { useData } from "../data";
 import { engine } from "../engine";
-import { longDate, money, monthName, percent, t } from "../i18n";
+import { categoryName, longDate, money, monthName, percent, t } from "../i18n";
 
 const PERIODS = [3, 6, 12] as const;
 const PAGE = 100;
@@ -32,21 +35,39 @@ export function BudgetPage() {
   const { overview } = useData();
   const [transactions, setTransactions] = useState<AccountTransaction[] | null>(null);
   const [notices, setNotices] = useState<TransactionsNotice[]>([]);
+  const [rules, setRules] = useState<Record<string, string>>({});
+  const [categories, setCategories] = useState<CategoryDef[]>(DEFAULT_CATEGORIES);
+  const [importing, setImporting] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [months, setMonths] = useState(storedPeriod);
   const [category, setCategory] = useState<string | null>(null);
   const [shown, setShown] = useState(PAGE);
 
-  // Reload after each sync: the overview changes then.
-  useEffect(() => {
+  const load = useCallback(() => {
     engine.transactions().then(
       (answer) => {
         setTransactions(answer.transactions);
         setNotices(answer.notices);
+        setRules(answer.rules);
+        setCategories(answer.categories ?? DEFAULT_CATEGORIES);
       },
       () => undefined,
     );
-  }, [overview]);
+  }, []);
+  // Reload after each sync: the overview changes then.
+  useEffect(load, [overview, load]);
+
+  async function recategorise(tx: Categorised, key: string | null) {
+    // Shown at once; the engine keeps it for every transaction from this payee.
+    setRules((all) => {
+      const next = { ...all };
+      if (key) next[tx.payeeKey] = key;
+      else delete next[tx.payeeKey];
+      return next;
+    });
+    await engine.setCategoryRule(tx.payeeKey, key).catch(load);
+  }
 
   // Accounts with transactions, the hidden ones aside.
   const accounts = useMemo(() => {
@@ -59,14 +80,35 @@ export function BudgetPage() {
   const figures = useMemo(() => {
     if (!transactions) return null;
     const ids = new Set(selected ? [selected.id] : accounts.map((a) => a.id));
-    return budget(transactions, ids, localToday(), months);
-  }, [transactions, accounts, selected, months]);
+    return budget(transactions, ids, localToday(), months, rules, categories);
+  }, [transactions, accounts, selected, months, rules, categories]);
+
+  const dialogs = (
+    <>
+      <ImportDialog open={importing} onClose={() => setImporting(false)} onImported={load} />
+      <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />
+    </>
+  );
+  const actions = (
+    <>
+      <button className="btn small" onClick={() => setEditing(true)}>
+        {t("budget.editCategories")}
+      </button>
+      <button className="btn small primary" onClick={() => setImporting(true)}>
+        {t("budget.import")}
+      </button>
+    </>
+  );
 
   if (!overview || !figures) return <h1>{t("nav.budget")}</h1>;
   if (accounts.length === 0) {
     return (
       <>
-        <h1>{t("nav.budget")}</h1>
+        <div className="page-header">
+          <h1>{t("nav.budget")}</h1>
+          <div className="row">{actions}</div>
+        </div>
+        {dialogs}
         <div className="card empty">
           <p className="secondary" style={{ margin: 0 }}>
             {t("budget.empty")}
@@ -82,11 +124,10 @@ export function BudgetPage() {
   }
 
   const labels = new Map(overview.accounts.map((a) => [a.id, a.label]));
-  const categoryName = (key: string) => (key === UNCATEGORISED ? t("budget.uncategorised") : key);
+  const byKey = new Map(categories.map((c) => [c.key, c]));
+  const nameOf = (key: string) => categoryName(byKey.get(key) ?? { key });
   const picked = category && figures.categories.some((c) => c.key === category) ? category : null;
-  const rows = picked
-    ? figures.transactions.filter((tx) => (tx.category || UNCATEGORISED) === picked && amount(tx.amount) < 0)
-    : figures.transactions;
+  const rows = picked ? figures.transactions.filter((tx) => tx.key === picked) : figures.transactions;
   const current = figures.months[figures.months.length - 1]!;
   const saved = figures.income - figures.spending;
   const averageHelp = t("budget.averageOver", { n: figures.full || 1 });
@@ -126,8 +167,10 @@ export function BudgetPage() {
               </option>
             ))}
           </select>
+          {actions}
         </div>
       </div>
+      {dialogs}
 
       <div className="kpi-row">
         <Kpi label={t("budget.income")} value={whole(figures.income)} detail={averageHelp} />
@@ -165,7 +208,7 @@ export function BudgetPage() {
           </div>
           <BarList
             slices={figures.categories}
-            label={categoryName}
+            label={nameOf}
             selected={picked}
             onSelect={(key) => {
               setCategory(key === picked ? null : key);
@@ -181,7 +224,7 @@ export function BudgetPage() {
       <div className="split-tables">
         <section className="card">
           <div className="card-header">
-            <h2>{picked ? t("budget.transactionsIn", { category: categoryName(picked) }) : t("budget.transactions")}</h2>
+            <h2>{picked ? t("budget.transactionsIn", { category: nameOf(picked) }) : t("budget.transactions")}</h2>
             {picked && (
               <button className="btn small ghost" onClick={() => setCategory(null)}>
                 {t("budget.allCategories")}
@@ -208,7 +251,26 @@ export function BudgetPage() {
                         {[selected ? null : labels.get(tx.account_id), tx.pending ? t("budget.pending") : null].filter(Boolean).join(" · ")}
                       </div>
                     </td>
-                    <td className="secondary">{categoryName(tx.category || UNCATEGORISED)}</td>
+                    <td>
+                      <select
+                        className="input compact category-pick"
+                        aria-label={t("budget.category")}
+                        title={t("budget.categoryHelp", { payee: tx.payee || tx.payeeKey })}
+                        value={tx.origin === "yours" ? tx.key : `auto:${tx.key}`}
+                        onChange={(e) => void recategorise(tx, e.target.value.startsWith("auto:") ? null : e.target.value)}
+                      >
+                        {tx.origin !== "yours" && <option value={`auto:${tx.key}`}>{nameOf(tx.key)}</option>}
+                        {tx.origin === "yours" && <option value="auto:">{t("budget.resetCategory")}</option>}
+                        {categories
+                          .filter((c) => tx.origin === "yours" || c.key !== tx.key)
+                          .map((c) => (
+                            <option key={c.key} value={c.key}>
+                              {categoryName(c)}
+                            </option>
+                          ))}
+                      </select>
+                      <div className="muted small">{t(`budget.origin.${tx.origin}`)}</div>
+                    </td>
                     <td className="right num">{money(amount(tx.amount), tx.currency ?? "EUR", { signDisplay: "exceptZero" })}</td>
                   </tr>
                 ))}
@@ -240,7 +302,7 @@ export function BudgetPage() {
               </thead>
               <tbody>
                 {figures.payees.slice(0, 15).map((payee) => (
-                  <tr key={payee.label}>
+                  <tr key={payee.key}>
                     <td className="holding-name">{payee.label}</td>
                     <td className="right num">{payee.count}</td>
                     <td className="right num">{whole(payee.spending)}</td>

@@ -75,4 +75,6 @@ class Transaction:
     amount: Decimal
     currency: str | None
     pending: bool = False
-    category: str | None = None
+    category: str | None = None  # the source's spending category
+    category_parent: str | None = None  # its broader category, when the source has two levels
+    payee: str | None = None  # the merchant's name as the source cleans it up

@@ -139,7 +139,9 @@ def test_older_vaults_are_migrated() -> None:
         "sync_warning",
     ):
         store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
-    store._db.execute("ALTER TABLE transactions DROP COLUMN category")
+    for column in ("category", "category_parent", "payee"):
+        store._db.execute(f"ALTER TABLE transactions DROP COLUMN {column}")
+    store._db.execute("DROP TABLE category_rules")
     for column in ("unit_value_currency", "security_type", "fees", "match", "annual_yield", "entry_fees"):
         store._db.execute(f"ALTER TABLE holdings DROP COLUMN {column}")
     for table in ("securities", "prices", "fx_rates", "dividends"):
@@ -151,7 +153,7 @@ def test_older_vaults_are_migrated() -> None:
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
     assert migrated.holdings() == [] and migrated.market()["prices"] == {}
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 10
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 11
     assert account["fee_rate"] is None and migrated.market()["dividends"] == {}
     assert account["sync_warning"] is None and migrated.all_transactions(date(2000, 1, 1)) == []
 
@@ -172,7 +174,9 @@ def test_stray_card_choices_are_cleared() -> None:
     store._db.execute("DROP TABLE dividends")
     for column in ("source_synced_at", "sync_warning"):  # added by version 9
         store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
-    store._db.execute("ALTER TABLE transactions DROP COLUMN category")
+    for column in ("category", "category_parent", "payee"):
+        store._db.execute(f"ALTER TABLE transactions DROP COLUMN {column}")
+    store._db.execute("DROP TABLE category_rules")
     store._db.execute("PRAGMA user_version = 3")
 
     [account] = Store.load(store.dump()).accounts()

@@ -10,6 +10,7 @@ Security model:
 
 from __future__ import annotations
 
+import base64
 import hmac
 import json
 import logging
@@ -29,7 +30,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
 
-from kerfin_engine import browsers, institutions, paths
+from kerfin_engine import bank_export, browsers, institutions, paths
 from kerfin_engine.connectors import finary, registry
 from kerfin_engine.connectors.base import ConnectorError
 from kerfin_engine.domain import AccountKind
@@ -42,6 +43,7 @@ log = logging.getLogger(__name__)
 
 TAURI_ORIGINS = {"http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"}
 DEFAULT_AUTO_LOCK_MINUTES = 15
+MAX_IMPORT_BYTES = 20 * 1024 * 1024
 BUDGET_DAYS = 400  # thirteen months: the last twelve, and the one before to compare
 # Environment variables that would let another program make us trust its certificates.
 CA_OVERRIDES = ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR")
@@ -465,7 +467,105 @@ def all_transactions(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
     return {
         "transactions": store.all_transactions(date.today() - timedelta(days=BUDGET_DAYS)),
         "notices": store.transactions_notices(),
+        "rules": store.category_rules(),
+        "categories": store.categories(),
     }
+
+
+CATEGORY_KINDS = {"spending", "income", "excluded"}
+# Categories the rules rely on (see packages/core/src/categories.ts).
+REQUIRED_CATEGORIES = {"transfers", "other"}
+
+
+@route("PUT", "/api/categories")
+def set_categories(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
+    """The user's categories: [{key, kind, label}], in their order."""
+    store, _sync = app.unlocked()
+    given = body.get("categories")
+    if not isinstance(given, list) or len(given) > 100:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "categories")
+    categories = []
+    for item in given:
+        key, kind, label = (item.get(k) if isinstance(item, dict) else None for k in ("key", "kind", "label"))
+        if (
+            not isinstance(key, str)
+            or not re.fullmatch(r"[a-z0-9_]{1,60}", key)
+            or kind not in CATEGORY_KINDS
+        ):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "category")
+        if label is not None and (not isinstance(label, str) or not label.strip() or len(label) > 60):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "label")
+        categories.append({"key": key, "kind": kind, "label": label.strip() if label else None})
+    keys = [c["key"] for c in categories]
+    if len(set(keys)) != len(keys) or not REQUIRED_CATEGORIES <= set(keys):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "categories")
+    store.set_categories(categories)
+    app.persist()
+    return {}
+
+
+@route("PUT", "/api/category-rules")
+def set_category_rule(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
+    """The user's category for a payee ("payee_key"), or null to go back to Kerfin's own."""
+    store, _sync = app.unlocked()
+    category = body.get("category")
+    if category is not None and (not isinstance(category, str) or not category.strip()):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "category")
+    store.set_category_rule(_str(body, "payee_key"), category.strip() if category else None)
+    app.persist()
+    return {}
+
+
+def _export(body: dict[str, Any]) -> list[bank_export.ExportAccount]:
+    try:
+        data = base64.b64decode(_str(body, "data"), validate=True)
+    except ValueError:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "data") from None
+    if len(data) > MAX_IMPORT_BYTES:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "file_too_large")
+    try:
+        return bank_export.read(data)
+    except bank_export.ExportError as error:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "unreadable_export", str(error)) from None
+
+
+@route("POST", "/api/imports/preview")
+def preview_import(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
+    """The accounts in a bank's export, each with the account it would go to."""
+    store, _sync = app.unlocked()
+    found = []
+    for account in _export(body):
+        amounts = [t.amount for t in account.transactions]
+        found.append(
+            {
+                "number": account.number,
+                "label": account.label,
+                "count": len(amounts),
+                "first": min(t.date for t in account.transactions),
+                "last": max(t.date for t in account.transactions),
+                "income": str(sum((a for a in amounts if a > 0), Decimal(0))),
+                "spending": str(-sum((a for a in amounts if a < 0), Decimal(0))),
+                "balance": None if account.balance is None else str(account.balance),
+                "target": bank_export.target(store, account),
+            }
+        )
+    return {"accounts": found}
+
+
+@route("POST", "/api/imports")
+def import_export(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
+    """Imports an export's transactions. "targets" says, for each account number, the
+    account they go to: an account id, "new" for a new account, or "skip"."""
+    store, _sync = app.unlocked()
+    targets = body.get("targets")
+    if not isinstance(targets, dict):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "targets")
+    try:
+        imported = bank_export.save(store, _export(body), targets)
+    except KeyError:
+        raise ApiError(HTTPStatus.NOT_FOUND, "unknown_account") from None
+    app.persist()
+    return {"imported": imported}
 
 
 @route("GET", "/api/accounts/(?P<id>\\w+)")
