@@ -40,6 +40,15 @@ def _account(account_id: str, name: str, account_type: str, owned_eur: str, conn
 # Shaped like the answer Finary actually gave (2026-10-28); the values are made up.
 FINARY_ACCOUNTS = {
     "_reading_note": "Amounts are strings in the account currency.",
+    "sync_warnings": [
+        {
+            "connection_id": "conn-2",
+            "institution_name": "Spirica",
+            "reason": "credentials_expired",
+            "last_successful_sync_at": "2026-10-01T08:00:00Z",
+            "account_ids": ["acc-2"],
+        }
+    ],
     "data": [
         _account("acc-1", "Livret A", "savings", "11475.25", "conn-1"),
         _account("acc-2", "Linxea Spirit 2", "investment", "24105.18", "conn-2"),
@@ -49,7 +58,7 @@ FINARY_ACCOUNTS = {
         {
             "id": "conn-1",
             "type": "institutionConnection",
-            "attributes": {"sync_status": "synced"},
+            "attributes": {"sync_status": "synced", "last_successful_sync_at": "2026-10-28T06:00:00Z"},
             "relationships": {"institution": {"data": {"type": "financialInstitution", "id": "inst-1"}}},
         },
         {
@@ -186,11 +195,23 @@ class FakeFinary:
                         200, {"jsonrpc": "2.0", "id": message["id"], "result": {}}, {"Mcp-Session-Id": "s1"}
                     )
                 elif method == "tools/list":
-                    tools = [{"name": "accounts", "inputSchema": {}}, {"name": "holdings", "inputSchema": {}}]
+                    tools = [
+                        {"name": "accounts", "inputSchema": {}},
+                        {"name": "holdings", "inputSchema": {}},
+                        {
+                            "name": "list_transactions",
+                            "inputSchema": {"properties": {"page_size": {"maximum": 50}}},
+                        },
+                    ]
                     self._reply(200, {"jsonrpc": "2.0", "id": message["id"], "result": {"tools": tools}})
                 elif method == "tools/call":
                     name = message["params"]["name"]
-                    payload = FINARY_ACCOUNTS if name == "accounts" else FINARY_HOLDINGS
+                    arguments = message["params"]["arguments"]
+                    if name == "list_transactions":
+                        assert arguments["page_size"] == 50 and arguments["start_date"]
+                        payload = FINARY_TRANSACTIONS[1 if arguments.get("cursor") == "page-2" else 0]
+                    else:
+                        payload = FINARY_ACCOUNTS if name == "accounts" else FINARY_HOLDINGS
                     result = {"content": [{"type": "text", "text": json.dumps(payload)}]}
                     answer = json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result})
                     # Answered as a server-sent event stream, which the MCP transport allows.
@@ -208,6 +229,47 @@ def fake_finary(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeFinary]:
     yield fake
     fake.server.shutdown()
     fake.server.server_close()
+
+
+# Two pages of transactions across accounts, linked by cursor; made up.
+FINARY_TRANSACTIONS = [
+    {
+        "data": [
+            {
+                "id": "t1",
+                "type": "transaction",
+                "attributes": {"date": "2026-10-03", "name": "Loyer", "value": "-950.00", "currency": "EUR"},
+                "relationships": {
+                    "account": {"data": {"type": "account", "id": "acc-1"}},
+                    "category": {"data": {"type": "category", "id": "cat-1"}},
+                },
+            },
+        ],
+        "included": [{"id": "cat-1", "type": "category", "attributes": {"name": "Rent"}}],
+        "meta": {"next_cursor": "page-2", "has_more": True},
+    },
+    {
+        "data": [
+            {
+                "id": "t2",
+                "type": "transaction",
+                "attributes": {
+                    "date": "2026-09-28T09:00:00Z",
+                    "name": "Salaire",
+                    "value": "3200",
+                    "category": {"name": "Salary"},
+                    "account_id": "acc-1",
+                },
+            },
+            {
+                "id": "t3",
+                "type": "transaction",
+                "attributes": {"date": "2026-09-20", "name": "Cash", "value": "-40"},
+            },
+        ],
+        "meta": {"has_more": False},
+    },
+]
 
 
 class NoMarket:

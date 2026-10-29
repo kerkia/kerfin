@@ -21,6 +21,7 @@ import { AddAccount } from "../components/AddAccount";
 import { Delta, AssetsTable } from "../components/AssetsTable";
 import { Donut, DonutLegend, LineChart, donutSlices } from "../components/charts";
 import { HoldingsPanel } from "../components/HoldingsPanel";
+import { SyncWarnings } from "../components/SyncWarnings";
 import { useMinuteTick } from "../components/Jobs";
 import { useData } from "../data";
 import { ago, errorText, kindLabel, longDate, money, t } from "../i18n";
@@ -160,6 +161,8 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: "accounts") =>
           ))}
         </section>
       )}
+
+      <SyncWarnings accounts={overview.accounts} />
 
       {/* The selected account's holdings open on the right of the chart and table. */}
       <div className={selected ? "with-aside" : undefined}>

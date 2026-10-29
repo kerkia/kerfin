@@ -20,6 +20,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -41,6 +42,7 @@ log = logging.getLogger(__name__)
 
 TAURI_ORIGINS = {"http://tauri.localhost", "https://tauri.localhost", "tauri://localhost"}
 DEFAULT_AUTO_LOCK_MINUTES = 15
+BUDGET_DAYS = 400  # thirteen months: the last twelve, and the one before to compare
 # Environment variables that would let another program make us trust its certificates.
 CA_OVERRIDES = ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "SSL_CERT_FILE", "SSL_CERT_DIR")
 
@@ -454,6 +456,13 @@ def market_data(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
     exchange rates, and the composition of the main indices."""
     store, _sync = app.unlocked()
     return {"holdings": store.holdings(), **store.market(), "indices": index_profiles()}
+
+
+@route("GET", "/api/transactions")
+def all_transactions(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
+    """Every account's transactions over the last thirteen months, for the budget."""
+    store, _sync = app.unlocked()
+    return {"transactions": store.all_transactions(date.today() - timedelta(days=BUDGET_DAYS))}
 
 
 @route("GET", "/api/accounts/(?P<id>\\w+)")

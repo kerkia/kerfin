@@ -143,6 +143,13 @@ today, and expects them again a year later, month by month. Lines without market
 the yield Finary states for them (euro funds' interest). Securities that paid nothing in two
 years count as reinvesting (accumulating funds).
 
+## Budget
+
+`packages/core/src/budget.ts` adds up the transactions of the accounts picked by calendar
+month: positive amounts are income, negative ones spending, by the source's category and by
+payee (the transaction's description). Averages leave out the current month, still under
+way.
+
 ## Connectors
 
 ### Finary
@@ -155,8 +162,15 @@ years count as reinvesting (accumulating funds).
   `/finary/callback`, the only address served without the API token (the `state` stands
   in for it). The client id and refresh token go to the vault.
 - **Sync.** At each unlock the UI syncs the Finary connection: the refresh token buys an
-  access token (a rotated refresh token is saved), then the `accounts` and `holdings`
-  tools are called. Each sync writes a balance snapshot per account and day.
+  access token (a rotated refresh token is saved), then the `accounts`, `holdings` and
+  `list_transactions` tools are called. Each sync writes a balance snapshot per account and
+  day.
+- **Sync warnings.** Finary's account list says which institution connections it can't
+  currently update, why, and since when; Kerfin keeps that per account and shows it on the
+  Overview and Accounts pages, since those figures are as of Finary's last update.
+- **Transactions.** `list_transactions` covers every account at once (cursor pages, over the
+  last 400 days, without transfers between the user's own accounts); Kerfin splits them by
+  account and keeps the source's category.
 - **Reading answers.** Finary names its tools but doesn't document their answers, so the
   mapping looks for the usual field names. When an answer can't be read, the error and the
   log give its structure (field names and types, never values).

@@ -24,9 +24,10 @@ import re
 import secrets
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import requests
 
@@ -40,6 +41,9 @@ MCP_URL = os.environ.get("KERFIN_FINARY_MCP_URL", "https://public-api.finary.com
 SCOPES = "openid profile email offline_access"
 PROTOCOL_VERSION = "2025-06-18"
 TIMEOUT = 60
+# Transactions read at each sync: a year and a month, for the budget's months to compare.
+TRANSACTION_DAYS = 400
+TRANSACTION_PAGES = 50
 
 # Secrets kept in the vault for a Finary connection.
 CLIENT_ID, REFRESH_TOKEN, TOKEN_ENDPOINT = "client_id", "refresh_token", "token_endpoint"
@@ -444,8 +448,24 @@ _PRODUCT_KINDS = {
 }
 
 
+def _sync_warnings(payload: Any) -> dict[str, tuple[str, str | None]]:
+    """Accounts Finary can't currently update from their institution: {account id: (reason,
+    last successful sync)}, from the warnings its account list starts with."""
+    warnings = payload.get("sync_warnings") if isinstance(payload, Mapping) else None
+    found: dict[str, tuple[str, str | None]] = {}
+    for warning in warnings if isinstance(warnings, list) else []:
+        if not isinstance(warning, Mapping):
+            continue
+        reason = _name(_pick(warning, ("reason", "message", "error_message", "status"))) or "unknown"
+        since = _name(warning.get("last_successful_sync_at"))
+        for account_id in warning.get("account_ids") or []:
+            found[str(account_id)] = (reason, since)
+    return found
+
+
 def accounts_from(payload: Any) -> list[Account]:
     included = _included(payload)
+    warnings = _sync_warnings(payload)
     found = []
     for item in _records(payload, _BALANCE_KEYS):
         # Finary values the user's share of each account in euros (joint accounts, other
@@ -461,6 +481,9 @@ def accounts_from(payload: Any) -> list[Account]:
             continue
         type_text = [_name(item.get(key)) for key in _TYPE_KEYS]
         institution = _institution(item, included)
+        connection = _linked(included, item.get("institution_connection_ref"))
+        warning = warnings.get(str(identifier))
+        error = _name(connection.get("error_message"))
         # The name often says more than the type ("PEA", "Assurance vie..."); Finary types
         # many accounts as just "investment".
         kind = account_kind(label, *type_text)
@@ -482,6 +505,9 @@ def accounts_from(payload: Any) -> list[Account]:
                 currency=currency or "EUR",
                 subtype=next((text for text in type_text if text), None),
                 institution=_name(_pick(item, _INSTITUTION_KEYS)) or _name(_pick(institution, _LABEL_KEYS)),
+                source_synced_at=(warning[1] if warning else None)
+                or _name(connection.get("last_successful_sync_at")),
+                sync_warning=(warning[0] if warning else None) or error,
             )
         )
     return found
@@ -581,6 +607,92 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
             )
         )
     return by_account
+
+
+_DATE_KEYS = (
+    "date",
+    "transaction_date",
+    "booking_date",
+    "booked_at",
+    "value_date",
+    "display_date",
+    "created_at",
+)
+_TRANSACTION_LABEL_KEYS = (
+    "display_name",
+    "simplified_description",
+    "name",
+    "label",
+    "description",
+    "original_description",
+    "title",
+)
+# Directions Finary may give with an unsigned amount.
+_OUTGOING = {"debit", "out", "outflow", "outgoing", "expense", "spending"}
+
+
+def _day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def transactions_from(payload: Any) -> dict[str | None, list[Transaction]]:
+    """Transactions by Finary account id (None when the answer doesn't say)."""
+    included = _included(payload)
+    data = payload.get("data") if isinstance(payload, Mapping) else None
+    records = (
+        [_flat(item) for item in data if isinstance(item, Mapping)]
+        if isinstance(data, list)
+        else _records(payload, ("amount", "value"))
+    )
+    found: dict[str | None, list[Transaction]] = {}
+    for item in records:
+        amount, currency = _amount(_pick(item, ("amount", "value", "display_value")))
+        day = _day(_pick(item, _DATE_KEYS))
+        if amount is None or day is None:
+            continue
+        direction = str(item.get("direction") or item.get("type_of_flow") or "").lower()
+        if amount > 0 and direction in _OUTGOING:
+            amount = -amount
+        account = item.get("account_id") or item.get("account")
+        if isinstance(account, Mapping):
+            account = _pick(account, _ID_KEYS)
+        category = item.get("category")
+        if not isinstance(category, (str, Mapping)):
+            category = _linked(included, item.get("category_ref")) or None
+        status = str(item.get("status") or "").lower()
+        found.setdefault(None if account is None else str(account), []).append(
+            Transaction(
+                date=day,
+                label=_name(_pick(item, _TRANSACTION_LABEL_KEYS)) or "?",
+                amount=amount,
+                currency=_currency(item) or currency or "EUR",
+                pending=bool(item.get("is_pending") or item.get("pending")) or status == "pending",
+                category=_name(category) or _name(item.get("category_name")),
+            )
+        )
+    return found
+
+
+def _next_cursor(payload: Any) -> str | None:
+    """Where the next page of a cursor-paginated answer starts, if there is one."""
+    if not isinstance(payload, Mapping):
+        return None
+    meta = payload.get("meta") if isinstance(payload.get("meta"), Mapping) else {}
+    if meta.get("has_more") is False:
+        return None
+    for key in ("next_cursor", "cursor", "next"):
+        if isinstance(meta.get(key), str) and meta[key]:
+            return meta[key]
+    if isinstance(payload.get("next_cursor"), str) and payload["next_cursor"]:
+        return payload["next_cursor"]
+    links = payload.get("links") if isinstance(payload.get("links"), Mapping) else {}
+    if isinstance(links.get("next"), str):
+        cursor = parse_qs(urlsplit(links["next"]).query).get("cursor")
+        return cursor[0] if cursor else None
+    return None
 
 
 def _ranks(values: list[Any]) -> list[int | None]:
@@ -724,6 +836,7 @@ class FinaryConnector:
             },
         )
         self._holdings: dict[str | None, list[Holding]] | None = None
+        self._transactions: dict[str | None, list[Transaction]] | None = None
         self._labels: dict[str, str] = {}
 
     def accounts(self) -> list[Account]:
@@ -812,7 +925,48 @@ class FinaryConnector:
         return {**payload, "data": data, "included": included}
 
     def transactions(self, account_id: str, limit: int | None = None) -> list[Transaction]:
-        return []  # balances and holdings first; transactions need Finary's Budget feature
+        # Finary lists transactions across accounts: they are read once, for every account,
+        # over TRANSACTION_DAYS (not `limit` per account).
+        if self._transactions is None:
+            self._transactions = {}
+            try:
+                self._transactions = self._read_transactions()
+            except ConnectorError as error:
+                log.info("Finary transactions unavailable: %s %s", error.code, error.detail[:200])
+        return self._transactions.get(account_id, [])
+
+    def _read_transactions(self) -> dict[str | None, list[Transaction]]:
+        tool = self._mcp.tools.get("list_transactions")
+        if tool is None:
+            return {}
+        properties = (tool.get("inputSchema") or {}).get("properties") or {}
+        page_size = min(100, int((properties.get("page_size") or {}).get("maximum") or 100))
+        start = (date.today() - timedelta(days=TRANSACTION_DAYS)).isoformat()
+        found: dict[str | None, list[Transaction]] = {}
+        cursor: str | None = None
+        for page in range(TRANSACTION_PAGES):
+            arguments: dict[str, Any] = {"start_date": start, "end_date": date.today().isoformat()}
+            arguments["page_size"] = page_size
+            if cursor:
+                arguments["cursor"] = cursor
+            payload = self._mcp.call("list_transactions", arguments)
+            if page == 0:
+                log.info("Finary transactions answer: %s", json.dumps(shape(payload)))
+            for account, transactions in transactions_from(payload).items():
+                found.setdefault(account, []).extend(transactions)
+            following = _next_cursor(payload)
+            if not following or following == cursor:
+                break
+            cursor = following
+        count = sum(len(t) for t in found.values())
+        log.info(
+            "Finary transactions: %s in %s pages, %s without account, %s with a category",
+            count,
+            page + 1,
+            len(found.get(None, [])),
+            sum(1 for ts in found.values() for t in ts if t.category),
+        )
+        return found
 
     def close(self) -> None:
         pass

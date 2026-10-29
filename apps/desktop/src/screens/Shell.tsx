@@ -9,13 +9,14 @@ import { t } from "../i18n";
 import type { useUpdater } from "../updater";
 import { Accounts } from "./Accounts";
 import { AccountTypesPage } from "./AccountTypes";
+import { BudgetPage } from "./Budget";
 import { FeesIncomePage } from "./FeesIncome";
 import { InsurancePage } from "./Insurance";
 import { InvestmentsPage } from "./Investments";
 import { OverviewPage } from "./Overview";
 import { Settings } from "./Settings";
 
-type Page = "overview" | "types" | "investments" | "income" | "insurance" | "accounts" | "settings";
+type Page = "overview" | "budget" | "types" | "investments" | "income" | "insurance" | "accounts" | "settings";
 
 /** The window's top row, above the navigation and every page, while an update waits for a restart. */
 function UpdateBar({ updater }: { updater: ReturnType<typeof useUpdater> }) {
@@ -55,7 +56,7 @@ export function Shell({
           <UpdateBar updater={updater} />
           <div className="shell">
             <nav className="sidebar">
-              {(["overview", "types", "investments", "income", "insurance", "accounts", "settings"] as const).map((id) => (
+              {(["overview", "budget", "types", "investments", "income", "insurance", "accounts", "settings"] as const).map((id) => (
                 <button
                   key={id}
                   className={page === id ? "nav-item active" : "nav-item"}
@@ -74,6 +75,7 @@ export function Shell({
             <main className="main">
               <div className="page">
                 {page === "overview" && <OverviewPage onNavigate={setPage} />}
+                {page === "budget" && <BudgetPage />}
                 {page === "types" && <AccountTypesPage />}
                 {page === "investments" && <InvestmentsPage />}
                 {page === "income" && <FeesIncomePage onNavigate={setPage} />}

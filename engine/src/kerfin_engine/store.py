@@ -53,6 +53,8 @@ CREATE TABLE accounts (
     label_override TEXT,           -- the name the user gave, kept across syncs
     insurer TEXT,                  -- life insurance and PER: set by the user
     fee_rate TEXT,                 -- the contract's yearly fees as a fraction: set by the user
+    source_synced_at TEXT,         -- aggregators: when they last updated it from its institution
+    sync_warning TEXT,             -- aggregators: why they can't update it currently
     UNIQUE (connection_id, external_id)
 );
 CREATE TABLE holdings (
@@ -108,7 +110,8 @@ CREATE TABLE transactions (
     label TEXT NOT NULL,
     amount TEXT NOT NULL,
     currency TEXT,
-    pending INTEGER NOT NULL
+    pending INTEGER NOT NULL,
+    category TEXT                  -- the source's spending category
 );
 CREATE INDEX transactions_by_account ON transactions(account_id, date);
 CREATE TABLE balance_history (
@@ -119,7 +122,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -153,6 +156,11 @@ MIGRATIONS = {
         "ALTER TABLE holdings ADD COLUMN annual_yield TEXT",
         "CREATE TABLE dividends (isin TEXT NOT NULL, date TEXT NOT NULL, amount TEXT NOT NULL,"
         " PRIMARY KEY (isin, date))",
+    ),
+    8: (
+        "ALTER TABLE accounts ADD COLUMN source_synced_at TEXT",
+        "ALTER TABLE accounts ADD COLUMN sync_warning TEXT",
+        "ALTER TABLE transactions ADD COLUMN category TEXT",
     ),
 }
 
@@ -340,7 +348,7 @@ class Store:
                         "DELETE FROM transactions WHERE account_id = ? AND date >= ?", (account_id, oldest)
                     )
                     db.executemany(
-                        "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?)",
+                        "INSERT INTO transactions VALUES (?, ?, ?, ?, ?, ?, ?)",
                         [
                             (
                                 account_id,
@@ -349,6 +357,7 @@ class Store:
                                 str(t.amount),
                                 t.currency,
                                 int(t.pending),
+                                t.category,
                             )
                             for t in transactions
                         ],
@@ -370,20 +379,23 @@ class Store:
             account.currency,
             _text(account.balance),
             _text(account.opening_date),
+            account.source_synced_at,
+            account.sync_warning,
             _now(),
         )
         if row:
             db.execute(
                 "UPDATE accounts SET institution_name = ?, label = ?, kind = ?, subtype = ?, number = ?,"
-                " currency = ?, balance = ?, opening_date = ?, updated_at = ? WHERE id = ?",
+                " currency = ?, balance = ?, opening_date = ?, source_synced_at = ?, sync_warning = ?,"
+                " updated_at = ? WHERE id = ?",
                 (*values, row["id"]),
             )
             return row["id"]
         account_id = new_id()
         db.execute(
             "INSERT INTO accounts (institution_name, label, kind, subtype, number, currency, balance,"
-            " opening_date, updated_at, id, connection_id, external_id)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " opening_date, source_synced_at, sync_warning, updated_at, id, connection_id, external_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (*values, account_id, connection_id, account.external_id),
         )
         return account_id
@@ -459,7 +471,8 @@ class Store:
             " COALESCE(a.label_override, a.label) AS label,"
             " COALESCE(a.kind_override, a.kind) AS kind, a.kind AS kind_detected,"
             " a.kind_override IS NOT NULL AS kind_set, a.insurer, a.fee_rate, a.subtype, a.number,"
-            " a.currency, a.balance, a.opening_date, a.updated_at, a.hidden"
+            " a.currency, a.balance, a.opening_date, a.updated_at, a.hidden, a.source_synced_at,"
+            " a.sync_warning"
             " FROM accounts a LEFT JOIN connections c ON c.id = a.connection_id ORDER BY 5"
         )
         for row in rows:
@@ -558,10 +571,21 @@ class Store:
 
     def transactions(self, account_id: str, limit: int = 100) -> list[dict[str, Any]]:
         rows = self._rows(
-            "SELECT date, label, amount, currency, pending FROM transactions WHERE account_id = ?"
+            "SELECT date, label, amount, currency, pending, category FROM transactions WHERE account_id = ?"
             " ORDER BY date DESC LIMIT ?",
             account_id,
             limit,
+        )
+        for row in rows:
+            row["pending"] = bool(row["pending"])
+        return rows
+
+    def all_transactions(self, since: date) -> list[dict[str, Any]]:
+        """Every account's transactions since `since`, newest first."""
+        rows = self._rows(
+            "SELECT account_id, date, label, amount, currency, pending, category FROM transactions"
+            " WHERE date >= ? ORDER BY date DESC, rowid",
+            since.isoformat(),
         )
         for row in rows:
             row["pending"] = bool(row["pending"])

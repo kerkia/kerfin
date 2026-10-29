@@ -1,6 +1,7 @@
 // The only way the UI reaches data. A future web version swaps this module for one that
 // reads synced, end-to-end encrypted data instead of a local engine.
 import type {
+  AccountTransaction,
   EngineStatus,
   FinarySignInStatus,
   Holding,
@@ -84,6 +85,7 @@ export const engine = {
   fields: (institution: string) => call<Prompt[]>("GET", `/api/institutions/${institution}/fields`),
   overview: () => call<Overview>("GET", "/api/overview"),
   market: () => call<Market>("GET", "/api/market"),
+  transactions: () => call<{ transactions: AccountTransaction[] }>("GET", "/api/transactions"),
 
   addConnection: (institution: string, label: string, values: Record<string, string>, remember: boolean) =>
     call<{ connection_id: string; job: Job }>("POST", "/api/connections", {

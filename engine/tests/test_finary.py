@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -28,6 +29,46 @@ def test_finary_accounts_are_read_with_owned_value_and_institution() -> None:
         "investment",  # Finary's type; the insurer says what it is
     )
     assert crypto.kind is AccountKind.CRYPTO and crypto.institution is None
+
+
+def test_sync_warnings_and_last_updates_are_kept() -> None:
+    accounts = {a.external_id: a for a in finary.accounts_from(FINARY_ACCOUNTS)}
+
+    assert accounts["acc-2"].sync_warning == "credentials_expired"
+    assert accounts["acc-2"].source_synced_at == "2026-10-01T08:00:00Z"
+    assert accounts["acc-1"].sync_warning is None
+    assert accounts["acc-1"].source_synced_at == "2026-10-28T06:00:00Z"
+    assert accounts["acc-3"].source_synced_at is None
+
+
+def test_transactions_are_read_across_pages_and_split_by_account(fake_finary: FakeFinary) -> None:
+    secrets = {
+        "client_id": "client-1",
+        "refresh_token": "r1",
+        "token_endpoint": f"{fake_finary.base}/oauth/token",
+    }
+    connector = finary.FinaryConnector(secrets)
+
+    rent, salary = connector.transactions("acc-1")
+    assert (rent.date, rent.label, rent.amount, rent.category) == (
+        date(2026, 10, 3),
+        "Loyer",
+        Decimal("-950.00"),
+        "Rent",
+    )
+    assert (salary.date, salary.amount, salary.category) == (date(2026, 9, 28), Decimal("3200"), "Salary")
+    assert connector.transactions("acc-2") == []
+    # Read once for every account.
+    assert fake_finary.calls.count("list_transactions") == 2
+
+
+def test_unsigned_outgoing_amounts_are_made_negative() -> None:
+    payload = {
+        "transactions": [{"date": "2026-10-01", "label": "Shop", "amount": 12.5, "direction": "debit"}]
+    }
+
+    [shop] = finary.transactions_from(payload)[None]
+    assert shop.amount == Decimal("-12.5") and shop.category is None
 
 
 def test_accounts_are_read_from_other_layouts() -> None:

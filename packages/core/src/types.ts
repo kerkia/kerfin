@@ -38,6 +38,8 @@ export interface Account {
   opening_date: string | null;
   updated_at: string;
   hidden: boolean;
+  source_synced_at?: string | null; // Finary: when it last updated the account from its institution
+  sync_warning?: string | null; // Finary: why it can't update it currently ("credentials_expired"...)
 }
 
 /** A contract's published yearly management fees, as fractions (see contract_fees.py). */
@@ -97,6 +99,12 @@ export interface Transaction {
   amount: string;
   currency: string | null;
   pending: boolean;
+  category?: string | null; // the source's spending category
+}
+
+/** A transaction of any account, as the budget reads them. */
+export interface AccountTransaction extends Transaction {
+  account_id: string;
 }
 
 export interface Institution {

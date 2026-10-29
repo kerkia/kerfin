@@ -41,6 +41,10 @@ class Account:
     opening_date: date | None = None
     # Where the account is held, when a connection covers several institutions (Finary).
     institution: str | None = None
+    # When an aggregator (Finary) last updated the account from its institution, and why it
+    # can't currently, if it says so.
+    source_synced_at: str | None = None
+    sync_warning: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,3 +74,4 @@ class Transaction:
     amount: Decimal
     currency: str | None
     pending: bool = False
+    category: str | None = None

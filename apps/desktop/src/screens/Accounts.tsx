@@ -5,11 +5,12 @@ import { useState } from "react";
 import { AccountEditor } from "../components/AccountEditor";
 import { AddAccount, ConnectForm } from "../components/AddAccount";
 import { FinaryConnect } from "../components/FinaryConnect";
+import { SyncWarnings, syncReason } from "../components/SyncWarnings";
 import { useJobs, useMinuteTick } from "../components/Jobs";
 import { Dialog } from "../components/ui";
 import { useData } from "../data";
 import { engine } from "../engine";
-import { ago, errorText, kindLabel, money, t } from "../i18n";
+import { ago, errorText, kindLabel, longDate, money, t } from "../i18n";
 
 export function Accounts() {
   const { overview, institutions, institutionName, refresh } = useData();
@@ -57,6 +58,8 @@ export function Accounts() {
           </button>
         </div>
       </div>
+
+      <SyncWarnings accounts={overview.accounts} />
 
       {overview.connections.map((connection) => (
         <section className="card" key={connection.id}>
@@ -165,6 +168,16 @@ function AccountRows({
               {account.number ? ` · ${account.number}` : ""}
               {account.hidden ? ` · ${t("accounts.hidden")}` : ""}
             </div>
+            {account.sync_warning ? (
+              <div className="small status error">
+                {syncReason(account.sync_warning)}
+                {account.source_synced_at ? ` · ${t("sync.since", { date: longDate(account.source_synced_at) })}` : ""}
+              </div>
+            ) : (
+              account.source_synced_at && (
+                <div className="muted small">{t("sync.updated", { when: ago(account.source_synced_at) })}</div>
+              )
+            )}
           </span>
           <span className="num">
             {account.balance == null ? "–" : money(amount(account.balance), account.currency ?? "EUR")}

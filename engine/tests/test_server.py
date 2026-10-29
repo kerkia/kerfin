@@ -90,10 +90,14 @@ def test_add_connection_with_sms_code(api: Any) -> None:
     job = wait_for(api, created["job"]["id"], "waiting")
     assert job["prompt"]["key"] == "otp_sms" and "SMS" in job["messages"][0]
     api("POST", f"/api/jobs/{job['id']}/answer", {"value": "123456"})
-    assert wait_for(api, job["id"], "done", "failed")["accounts_found"] == 5
+    assert wait_for(api, job["id"], "done", "failed")["accounts_found"] == 6
 
     overview = api("GET", "/api/overview")
-    assert len(overview["accounts"]) == 5 and overview["connections"][0]["last_status"] == "ok"
+    assert len(overview["accounts"]) == 6 and overview["connections"][0]["last_status"] == "ok"
+    pea = next(a for a in overview["accounts"] if a["label"] == "PEA")
+    assert pea["sync_warning"] == "credentials_expired" and pea["source_synced_at"]
+    spending = api("GET", "/api/transactions")["transactions"]
+    assert spending and spending[0]["account_id"] and any(t["category"] == "Rent" for t in spending)
 
     # The password wasn't remembered: the next sync asks for it first.
     job = api("POST", f"/api/connections/{created['connection_id']}/sync")
@@ -144,7 +148,7 @@ def test_qr_code_is_shown_while_the_job_runs(api: Any, monkeypatch: pytest.Monke
         time.sleep(0.05)
     assert job["state"] == "running"
     done = wait_for(api, job["id"], "done", "failed")
-    assert done["accounts_found"] == 5 and done["qr_code"] is None
+    assert done["accounts_found"] == 6 and done["qr_code"] is None
 
 
 def test_website_logins_are_no_longer_offered_but_still_known(api: Any) -> None:
