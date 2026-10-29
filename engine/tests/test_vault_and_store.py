@@ -142,6 +142,7 @@ def test_older_vaults_are_migrated() -> None:
     for column in ("category", "category_parent", "payee"):
         store._db.execute(f"ALTER TABLE transactions DROP COLUMN {column}")
     store._db.execute("DROP TABLE category_rules")
+    store._db.execute("DROP TABLE removed_accounts")
     for column in ("unit_value_currency", "security_type", "fees", "match", "annual_yield", "entry_fees"):
         store._db.execute(f"ALTER TABLE holdings DROP COLUMN {column}")
     for table in ("securities", "prices", "fx_rates", "dividends"):
@@ -153,7 +154,7 @@ def test_older_vaults_are_migrated() -> None:
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
     assert migrated.holdings() == [] and migrated.market()["prices"] == {}
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 11
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 12
     assert account["fee_rate"] is None and migrated.market()["dividends"] == {}
     assert account["sync_warning"] is None and migrated.all_transactions(date(2000, 1, 1)) == []
 
@@ -177,10 +178,26 @@ def test_stray_card_choices_are_cleared() -> None:
     for column in ("category", "category_parent", "payee"):
         store._db.execute(f"ALTER TABLE transactions DROP COLUMN {column}")
     store._db.execute("DROP TABLE category_rules")
+    store._db.execute("DROP TABLE removed_accounts")
     store._db.execute("PRAGMA user_version = 3")
 
     [account] = Store.load(store.dump()).accounts()
     assert account["kind"] == account["kind_detected"] != "card" and not account["kind_set"]
+
+
+def test_a_removed_synced_account_stays_away_until_restored() -> None:
+    store = Store.create()
+    connection_id = store.add_connection("finary", "Finary", {}, {}, remember=True)
+    _sync(store, connection_id, "1000.00", date(2026, 1, 1))
+    [account] = store.accounts()
+    store.delete_account(account["id"])
+    assert store.accounts() == [] and store.connections()[0]["removed_accounts"] == [account["label"]]
+
+    _sync(store, connection_id, "1100.00", date(2026, 1, 2))
+    assert store.accounts() == []
+    store.restore_accounts(connection_id)
+    _sync(store, connection_id, "1200.00", date(2026, 1, 3))
+    assert [a["balance"] for a in store.accounts()] == ["1200.00"]
 
 
 def test_a_name_given_by_the_user_survives_syncs() -> None:

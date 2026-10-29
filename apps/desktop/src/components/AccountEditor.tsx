@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { useData } from "../data";
 import { engine } from "../engine";
+import { ImportDialog } from "./ImportDialog";
 import { KIND_OPTIONS, ago, kindLabel, rate, t } from "../i18n";
 
 interface Changes {
@@ -21,6 +22,7 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
   const { refresh } = useData();
   const [changes, setChanges] = useState<Changes>({});
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
   const manual = !account.connection_id;
   const change = (values: Changes) => setChanges((all) => ({ ...all, ...values }));
 
@@ -62,7 +64,8 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
   }
 
   async function remove() {
-    if (!window.confirm(t("detail.deleteConfirm", { name: account.label }))) return;
+    const question = manual ? "detail.deleteConfirm" : "detail.removeConfirm";
+    if (!window.confirm(t(question, { name: account.label }))) return;
     await engine.deleteAccount(account.id);
     await refresh();
     onClose();
@@ -147,11 +150,12 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
         <span className="muted small">{t("detail.updated", { when: ago(account.updated_at) })}</span>
       </div>
       <div className="dialog-actions">
-        {manual && (
-          <button className="btn danger ghost" style={{ marginRight: "auto" }} onClick={() => void remove()}>
-            {t("detail.delete")}
-          </button>
-        )}
+        <button className="btn danger ghost" onClick={() => void remove()}>
+          {manual ? t("detail.delete") : t("detail.remove")}
+        </button>
+        <button className="btn ghost" style={{ marginRight: "auto" }} onClick={() => setImporting(true)}>
+          {t("detail.import")}
+        </button>
         <button className="btn" onClick={onClose}>
           {t("add.cancel")}
         </button>
@@ -159,6 +163,7 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
           {t("detail.save")}
         </button>
       </div>
+      <ImportDialog account={account} open={importing} onClose={() => setImporting(false)} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
-// Importing a bank's CSV export (BoursoBank's, which includes the accounts it aggregates):
-// the file is read, each account in it shown with where its transactions will go, then saved.
+// Importing an account's transactions from a bank's CSV export (BoursoBank's, which also
+// lists the accounts it aggregates): the file is read, the user confirms which of its
+// accounts is this one, and its transactions are saved to it.
 import { amount } from "@kerfin/core";
-import type { ImportAccount } from "@kerfin/core";
+import type { Account, ImportAccount } from "@kerfin/core";
 import { useState } from "react";
 
 import { useData } from "../data";
@@ -17,18 +18,31 @@ async function base64(file: File): Promise<string> {
   return btoa(binary);
 }
 
-export function ImportDialog({ open, onClose, onImported }: { open: boolean; onClose: () => void; onImported: () => void }) {
-  const { overview, refresh } = useData();
+const plain = (text: string) => text.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+/** The file's account that is `account`: imported there before, else of the same name, else the only one. */
+function guess(found: ImportAccount[], account: Account): string {
+  const pick =
+    found.find((a) => a.target === account.id) ??
+    found.find((a) => plain(a.label) === plain(account.label)) ??
+    (found.length === 1 ? found[0] : undefined);
+  return pick?.number ?? "";
+}
+
+export function ImportDialog({ account, open, onClose }: { account: Account; open: boolean; onClose: () => void }) {
+  const { refresh } = useData();
   const [data, setData] = useState<string | null>(null);
   const [found, setFound] = useState<ImportAccount[] | null>(null);
-  const [targets, setTargets] = useState<Record<string, string>>({});
+  const [number, setNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   function close() {
     setData(null);
     setFound(null);
     setError(null);
+    setDone(null);
     onClose();
   }
 
@@ -41,7 +55,7 @@ export function ImportDialog({ open, onClose, onImported }: { open: boolean; onC
       const { accounts } = await engine.previewImport(encoded);
       setData(encoded);
       setFound(accounts);
-      setTargets(Object.fromEntries(accounts.map((a) => [a.number, a.target ?? "new"])));
+      setNumber(guess(accounts, account));
     } catch (e) {
       setError(e instanceof EngineError && e.code === "unreadable_export" ? t("import.unreadable") : t("import.failed"));
     } finally {
@@ -50,13 +64,12 @@ export function ImportDialog({ open, onClose, onImported }: { open: boolean; onC
   }
 
   async function save() {
-    if (!data) return;
+    if (!data || !number) return;
     setBusy(true);
     try {
-      await engine.importExport(data, targets);
+      const { imported } = await engine.importExport(data, { [number]: account.id });
       await refresh();
-      onImported();
-      close();
+      setDone(imported);
     } catch {
       setError(t("import.failed"));
     } finally {
@@ -64,11 +77,15 @@ export function ImportDialog({ open, onClose, onImported }: { open: boolean; onC
     }
   }
 
-  const accounts = (overview?.accounts ?? []).filter((a) => !a.hidden);
+  const chosen = found?.find((a) => a.number === number);
   return (
-    <Dialog open={open} onClose={close} wide>
-      <h2 style={{ margin: 0 }}>{t("import.title")}</h2>
-      {!found ? (
+    <Dialog open={open} onClose={close}>
+      <h2 style={{ margin: 0 }}>{t("import.title", { account: account.label })}</h2>
+      {done !== null ? (
+        <p className="secondary" style={{ margin: 0 }}>
+          {t("import.done", { n: done, account: account.label })}
+        </p>
+      ) : !found ? (
         <>
           <p className="secondary" style={{ margin: 0 }}>
             {t("import.help")}
@@ -77,65 +94,39 @@ export function ImportDialog({ open, onClose, onImported }: { open: boolean; onC
         </>
       ) : (
         <>
-          <p className="secondary" style={{ margin: 0 }}>
-            {t("import.found", { n: found.length })}
-          </p>
-          <div className="table-scroll">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{t("import.account")}</th>
-                  <th>{t("import.period")}</th>
-                  <th className="right">{t("import.in")}</th>
-                  <th className="right">{t("import.out")}</th>
-                  <th>{t("import.into")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {found.map((account) => (
-                  <tr key={account.number}>
-                    <td>
-                      <div>{account.label}</div>
-                      <div className="muted small">{t("import.count", { n: account.count })}</div>
-                    </td>
-                    <td className="small">
-                      {longDate(account.first)} – {longDate(account.last)}
-                    </td>
-                    <td className="right num">{money(amount(account.income), "EUR", { maximumFractionDigits: 0 })}</td>
-                    <td className="right num">{money(amount(account.spending), "EUR", { maximumFractionDigits: 0 })}</td>
-                    <td>
-                      <select
-                        className="input compact"
-                        aria-label={t("import.into")}
-                        value={targets[account.number] ?? "new"}
-                        onChange={(e) => setTargets((all) => ({ ...all, [account.number]: e.target.value }))}
-                      >
-                        <option value="new">{t("import.new")}</option>
-                        <option value="skip">{t("import.skip")}</option>
-                        {accounts.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="field">
+            <label htmlFor="import-account">{t("import.which", { account: account.label })}</label>
+            <select id="import-account" className="input" value={number} onChange={(e) => setNumber(e.target.value)}>
+              {!number && <option value="">{t("import.choose")}</option>}
+              {found.map((a) => (
+                <option key={a.number} value={a.number}>
+                  {a.label} · {t("import.count", { n: a.count })}
+                </option>
+              ))}
+            </select>
           </div>
+          {chosen && (
+            <p className="secondary" style={{ margin: 0 }}>
+              {t("import.summary", {
+                first: longDate(chosen.first),
+                last: longDate(chosen.last),
+                in: money(amount(chosen.income), "EUR", { maximumFractionDigits: 0 }),
+                out: money(amount(chosen.spending), "EUR", { maximumFractionDigits: 0 }),
+              })}
+            </p>
+          )}
           <p className="muted small" style={{ margin: 0 }}>
-            {t("import.replaceHelp")}
+            {account.connection_id ? t("import.replaceHelp") : `${t("import.replaceHelp")} ${t("import.balanceHelp")}`}
           </p>
         </>
       )}
       {error && <div className="error-text">{error}</div>}
       <div className="dialog-actions">
         <button className="btn" onClick={close}>
-          {t("add.cancel")}
+          {done !== null ? t("import.close") : t("add.cancel")}
         </button>
-        {found && (
-          <button className="btn primary" disabled={busy || Object.values(targets).every((v) => v === "skip")} onClick={() => void save()}>
+        {found && done === null && (
+          <button className="btn primary" disabled={busy || !number} onClick={() => void save()}>
             {t("import.save")}
           </button>
         )}

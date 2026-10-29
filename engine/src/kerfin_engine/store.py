@@ -116,6 +116,13 @@ CREATE TABLE transactions (
     category_parent TEXT,          -- its broader category, when the source has two levels
     payee TEXT                     -- the merchant's name as the source cleans it up
 );
+-- Accounts of a connection the user removed: later syncs leave them out.
+CREATE TABLE removed_accounts (
+    connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+    external_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    PRIMARY KEY (connection_id, external_id)
+);
 -- The user's categories, by payee (see packages/core/src/categories.ts for the key).
 CREATE TABLE category_rules (payee_key TEXT PRIMARY KEY, category TEXT NOT NULL);
 CREATE INDEX transactions_by_account ON transactions(account_id, date);
@@ -127,7 +134,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -172,6 +179,11 @@ MIGRATIONS = {
         "ALTER TABLE transactions ADD COLUMN category_parent TEXT",
         "ALTER TABLE transactions ADD COLUMN payee TEXT",
         "CREATE TABLE category_rules (payee_key TEXT PRIMARY KEY, category TEXT NOT NULL)",
+    ),
+    11: (
+        "CREATE TABLE removed_accounts (connection_id TEXT NOT NULL REFERENCES connections(id)"
+        " ON DELETE CASCADE, external_id TEXT NOT NULL, label TEXT NOT NULL,"
+        " PRIMARY KEY (connection_id, external_id))",
     ),
 }
 
@@ -281,10 +293,19 @@ class Store:
 
     def connections(self) -> list[dict[str, Any]]:
         rows = self._rows("SELECT * FROM connections ORDER BY created_at")
+        removed: dict[str, list[str]] = {}
+        for item in self._rows("SELECT connection_id, label FROM removed_accounts ORDER BY label"):
+            removed.setdefault(item["connection_id"], []).append(item["label"])
         for row in rows:
             row["params"] = json.loads(row["params"])
             row["remember_secrets"] = bool(row["remember_secrets"])
+            row["removed_accounts"] = removed.get(row["id"], [])
         return rows
+
+    def restore_accounts(self, connection_id: str) -> None:
+        """The connection's removed accounts come back at its next sync."""
+        with self.transaction() as db:
+            db.execute("DELETE FROM removed_accounts WHERE connection_id = ?", (connection_id,))
 
     def connection(self, connection_id: str) -> dict[str, Any]:
         for row in self.connections():
@@ -320,7 +341,15 @@ class Store:
         today = today or date.today()
         count = 0
         with self.transaction() as db:
+            removed = {
+                row["external_id"]
+                for row in db.execute(
+                    "SELECT external_id FROM removed_accounts WHERE connection_id = ?", (connection_id,)
+                )
+            }
             for account, holdings, transactions in accounts:
+                if account.external_id in removed:
+                    continue
                 account_id = self._upsert_account(db, connection_id, account)
                 if account.balance is not None:
                     db.execute(
@@ -519,9 +548,23 @@ class Store:
                     (None if clear_fee_rate else str(fee_rate), account_id),
                 )
 
-    def delete_manual_account(self, account_id: str) -> None:
+    def delete_account(self, account_id: str) -> None:
+        """Deletes an account and its history. A connection's account is also left out of its
+        later syncs, until the user restores the connection's accounts."""
         with self.transaction() as db:
-            db.execute("DELETE FROM accounts WHERE id = ? AND connection_id IS NULL", (account_id,))
+            row = db.execute(
+                "SELECT connection_id, external_id, COALESCE(label_override, label) AS label FROM accounts"
+                " WHERE id = ?",
+                (account_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(account_id)
+            if row["connection_id"] is not None:
+                db.execute(
+                    "INSERT OR REPLACE INTO removed_accounts VALUES (?, ?, ?)",
+                    (row["connection_id"], row["external_id"], row["label"]),
+                )
+            db.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
 
     def accounts(self) -> list[dict[str, Any]]:
         rows = self._rows(

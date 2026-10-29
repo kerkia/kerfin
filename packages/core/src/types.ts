@@ -60,6 +60,7 @@ export interface Connection {
   last_sync_at: string | null;
   last_status: string | null; // "ok" or an error code
   last_error: string | null;
+  removed_accounts?: string[]; // names of the accounts the user removed: syncs leave them out
 }
 
 export interface BalancePoint {

@@ -66,6 +66,9 @@ export function Accounts() {
           <div className="card-header">
             <div>
               <h2>{connection.label || institutionName(connection.institution)}</h2>
+              <div className="muted small">
+                {t("accounts.connection", { n: overview.accounts.filter((a) => a.connection_id === connection.id).length })}
+              </div>
               <ConnectionStatus connection={connection} />
             </div>
             <div className="row">
@@ -89,6 +92,20 @@ export function Accounts() {
             onToggle={toggle}
             onClose={() => setOpen(null)}
           />
+          {(connection.removed_accounts ?? []).length > 0 && (
+            <div className="row muted small" style={{ marginTop: 10, flexWrap: "wrap" }}>
+              <span>{t("accounts.removed", { names: connection.removed_accounts!.join(", ") })}</span>
+              <button
+                className="btn small ghost"
+                onClick={async () => {
+                  await engine.restoreAccounts(connection.id);
+                  await refresh();
+                }}
+              >
+                {t("accounts.restore")}
+              </button>
+            </div>
+          )}
         </section>
       ))}
 
@@ -188,6 +205,7 @@ function AccountRows({
             <div>{account.label}</div>
             <div className="muted small">
               {kindLabel(account.kind)}
+              {account.connection_id && account.institution_name ? ` · ${account.institution_name}` : ""}
               {account.number ? ` · ${account.number}` : ""}
               {account.hidden ? ` · ${t("accounts.hidden")}` : ""}
             </div>

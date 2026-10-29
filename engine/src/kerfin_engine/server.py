@@ -613,7 +613,19 @@ def update_account(app: App, match: re.Match[str], body: dict[str, Any]) -> Any:
 @route("DELETE", "/api/accounts/(?P<id>\\w+)")
 def delete_account(app: App, match: re.Match[str], __: dict[str, Any]) -> Any:
     store, _sync = app.unlocked()
-    store.delete_manual_account(match["id"])
+    try:
+        store.delete_account(match["id"])
+    except KeyError:
+        raise ApiError(HTTPStatus.NOT_FOUND, "unknown_account") from None
+    app.persist()
+    return {}
+
+
+@route("POST", "/api/connections/(?P<id>\\w+)/restore-accounts")
+def restore_accounts(app: App, match: re.Match[str], __: dict[str, Any]) -> Any:
+    """The accounts removed from a connection come back at its next sync."""
+    store, _sync = app.unlocked()
+    store.restore_accounts(match["id"])
     app.persist()
     return {}
 

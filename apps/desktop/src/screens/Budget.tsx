@@ -7,13 +7,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
 import { BarList, ColumnChart } from "../components/charts";
-import { ImportDialog } from "../components/ImportDialog";
 import { useData } from "../data";
 import { engine } from "../engine";
 import { categoryName, longDate, money, monthName, percent, t } from "../i18n";
 
 const PERIODS = [3, 6, 12] as const;
 const PAGE = 100;
+const EDIT = "__edit"; // the picker's entry that opens the category editor
 
 function localToday(): string {
   const now = new Date();
@@ -37,7 +37,6 @@ export function BudgetPage() {
   const [notices, setNotices] = useState<TransactionsNotice[]>([]);
   const [rules, setRules] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<CategoryDef[]>(DEFAULT_CATEGORIES);
-  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [accountId, setAccountId] = useState("");
   const [months, setMonths] = useState(storedPeriod);
@@ -85,19 +84,13 @@ export function BudgetPage() {
 
   const dialogs = (
     <>
-      <ImportDialog open={importing} onClose={() => setImporting(false)} onImported={load} />
       <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />
     </>
   );
   const actions = (
-    <>
-      <button className="btn small" onClick={() => setEditing(true)}>
-        {t("budget.editCategories")}
-      </button>
-      <button className="btn small primary" onClick={() => setImporting(true)}>
-        {t("budget.import")}
-      </button>
-    </>
+    <button className="btn small" onClick={() => setEditing(true)}>
+      {t("budget.editCategories")}
+    </button>
   );
 
   if (!overview || !figures) return <h1>{t("nav.budget")}</h1>;
@@ -205,6 +198,9 @@ export function BudgetPage() {
         <section className="card">
           <div className="card-header">
             <h2>{t("budget.byCategory")}</h2>
+            <button className="btn small ghost" onClick={() => setEditing(true)}>
+              {t("budget.edit")}
+            </button>
           </div>
           <BarList
             slices={figures.categories}
@@ -257,7 +253,10 @@ export function BudgetPage() {
                         aria-label={t("budget.category")}
                         title={t("budget.categoryHelp", { payee: tx.payee || tx.payeeKey })}
                         value={tx.origin === "yours" ? tx.key : `auto:${tx.key}`}
-                        onChange={(e) => void recategorise(tx, e.target.value.startsWith("auto:") ? null : e.target.value)}
+                        onChange={(e) => {
+                          if (e.target.value === EDIT) setEditing(true);
+                          else void recategorise(tx, e.target.value.startsWith("auto:") ? null : e.target.value);
+                        }}
                       >
                         {tx.origin !== "yours" && <option value={`auto:${tx.key}`}>{nameOf(tx.key)}</option>}
                         {tx.origin === "yours" && <option value="auto:">{t("budget.resetCategory")}</option>}
@@ -268,6 +267,7 @@ export function BudgetPage() {
                               {categoryName(c)}
                             </option>
                           ))}
+                        <option value={EDIT}>{t("budget.editCategoriesOption")}</option>
                       </select>
                       <div className="muted small">{t(`budget.origin.${tx.origin}`)}</div>
                     </td>

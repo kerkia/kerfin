@@ -150,9 +150,13 @@ years count as reinvesting (accumulating funds).
 
 Transactions come from Finary (on plans that include its budget) or from a bank's CSV export
 (`engine/src/kerfin_engine/bank_export.py`: BoursoBank's, which includes the accounts it
-aggregates). An import shows each account in the file and where it will go (an existing
-account, a new one, or none), remembers that by account number, and replaces the account's
-transactions over the days the file covers, so overlapping imports never double them.
+aggregates), imported into one account from its panel in Accounts. The user confirms which of
+the file's accounts it is (remembered by account number); its transactions replace the
+account's over the days the file covers, so overlapping imports never double them, and an
+account entered by hand takes the file's balance.
+
+An account a connection brings in (Finary's) can be removed: its data goes, and later syncs
+leave it out until the user restores the connection's removed accounts.
 
 `packages/core/src/categories.ts` gives each transaction a category of Kerfin's own, in
 this order: the user's category for its payee; "transfers" for money moving between two of
