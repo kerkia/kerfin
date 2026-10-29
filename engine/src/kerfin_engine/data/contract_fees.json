@@ -1,0 +1,391 @@
+{
+ "_about": "Yearly management fees (percent) published for French life insurance (assurance-vie) and PER contracts, researched in October 2026 from the brokers' and insurers' own documents. uc_fee applies to units of account (funds, ETFs), euro_fee to the euro fund; null when only a cap is published. Robo-advisors' uc_fee includes their management fee. Suggestions only: users can set their own rate.",
+ "contracts": [
+  {
+   "name": "Linxea Spirit 2",
+   "aliases": [
+    "Spirit 2",
+    "LINXEA Spirit 2"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Linxea",
+   "insurer": "Spirica",
+   "uc_fee": 0.5,
+   "euro_fee": null,
+   "source": "https://www.linxea.com/document/linxea-spirit-2-conditions-generales/ (CG4445 - 01/09/2026); https://www.linxea.com/document/linxea-spirit-2_tableau-de-frais/ (Annexe frais, mise a jour 1er avril 2026); https://www.linxea.com/assurance-vie/linxea-spirit-2/",
+   "as_of": "2026-09-01",
+   "notes": "UC: 0,125%/quarter = 0,50%/yr. Fonds Euro Nouvelle Generation: '2% maximum par an' (a cap, the actual fee is not published; Linxea's page also shows '2 % maximum'), so euro_fee left null. Croissance Allocation Long Terme: 1% max/yr in the NAV + up to 10% performance fee. Gestion pilotee: +0,20% to +0,70%/yr on UC depending on profile (OTEA +0,20%, Yomoni +0,70%). Shares (titres vifs): 0,60% buy/sell spread; ETFs: 0,10% spread."
+  },
+  {
+   "name": "Linxea Avenir 2",
+   "aliases": [
+    "Avenir 2",
+    "Linxea Avenir 2+",
+    "LINXEA AVENIR 2+"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Linxea",
+   "insurer": "Suravenir",
+   "uc_fee": 0.6,
+   "euro_fee": 0.6,
+   "source": "https://www.linxea.com/document/linxea-avenir-2-conditions-generales/ (Conditions Contractuelles Avril 2022); https://www.linxea.com/document/contrat-linxea-avenir-2-plus-tableau-des-frais/ (mis a jour le 07/10/2026); https://www.linxea.com/assurance-vie/linxea-avenir-2/",
+   "as_of": "2026-10-07",
+   "notes": "euro_fee is for fonds Suravenir Rendement 2 (0,60%). Fonds Suravenir Opportunites 2: '3,00% maximum'. Mandat d'arbitrage (gestion pilotee, e.g. Amundi ETF): +0,39%/yr on UC (Linxea states 0,99% max total on UC); OTEA: +0,20%. The fee table is titled 'LINXEA AVENIR 2+' (contrat n°2284) and is the one linked from the Avenir 2 page."
+  },
+  {
+   "name": "Linxea Vie",
+   "aliases": [],
+   "kind": "life_insurance",
+   "distributor": "Linxea",
+   "insurer": "Generali Vie",
+   "uc_fee": 0.6,
+   "euro_fee": 0.75,
+   "source": "https://www.linxea.com/document/conditions-generales-linxea-vie/ (Notice PAC5421CGF - Octobre 2026); https://www.linxea.com/assurance-vie/linxea-vie/",
+   "as_of": "2026-10",
+   "notes": "Notice: UC (incl. ETF) 0,15%/quarter max = 0,60%/yr; shares held directly (Actions/titres vifs) 0,70%/yr max. Fonds euros Netissima, Eurossima, Vertessima: 0,75% max each. Fonds croissance: 0,75% max. Gestion pilotee: mandate fee on top (Amundi ETF +0,39%/yr; OTEA +0,20%; Carmignac +0,20% per Linxea's page). The fee table (tableau de frais, Dec 2025) shows 'Support unites de compte 0,70% maximum', which is the titres-vifs rate."
+  },
+  {
+   "name": "Linxea Zen",
+   "aliases": [],
+   "kind": "life_insurance",
+   "distributor": "Linxea",
+   "insurer": "APICIL Epargne",
+   "uc_fee": 0.6,
+   "euro_fee": 0.6,
+   "source": "https://www.linxea.com/document/conditions-generales-linxea-zen/; https://espace.intencial.fr/documents/2217335/0/Tableau_Frais_LINXEA_ZEN.pdf (file dated 2025-07-29); https://www.linxea.com/assurance-vie/linxea-zen/",
+   "as_of": "2025-07",
+   "notes": "euro_fee is for APICIL Euro Garanti (0,60% max). APICIL EuroFlex: 1,6% max per the CG and Linxea's page, but the fee table says '2 % maximum'. Gestion pilotee / pilotee profilee (OTEA): +0,20% max on UC."
+  },
+  {
+   "name": "Linxea Spirit PER",
+   "aliases": [
+    "Spirit PER"
+   ],
+   "kind": "retirement",
+   "distributor": "Linxea",
+   "insurer": "Spirica",
+   "uc_fee": 0.5,
+   "euro_fee": null,
+   "source": "https://www.linxea.com/document/linxea-spirit-per-conditions-generales/ (CG9403 - 01/09/2026); https://www.linxea.com/per/linxea-spirit-per/",
+   "as_of": "2026-09-01",
+   "notes": "UC: 0,125%/quarter max = 0,50%/yr max. Fonds Euro PER Nouvelle Generation: '2 % maximum par an' (cap only, euro_fee null). Gestion pilotee a horizon: no extra fee. Gestion pilotee: +0,20% to +0,70%/yr (OTEA 0,20%, Yomoni 0,70%). Croissance Allocation Long Terme: 1% max. Association fee: 10 EUR at subscription."
+  },
+  {
+   "name": "Linxea Suravenir PER",
+   "aliases": [
+    "Suravenir PER",
+    "Linxea Avenir PER"
+   ],
+   "kind": "retirement",
+   "distributor": "Linxea",
+   "insurer": "Suravenir",
+   "uc_fee": 0.6,
+   "euro_fee": 0.8,
+   "source": "https://www.linxea.com/document/suravenir-per-tableau-de-frais/ (Transparence de frais SURAVENIR PER, mis a jour le 01/01/2026); https://www.linxea.com/per/suravenir-per/",
+   "as_of": "2026-01-01",
+   "notes": "There is no product called 'Linxea Avenir PER': Linxea's Suravenir PER is marketed as 'Suravenir PER' / 'Linxea Suravenir PER' (contrat n°2240). Gestion horizon retraite: no extra fee. Mandat d'arbitrage: +0,30%. The same 'Suravenir PER' is also sold by Lucya."
+  },
+  {
+   "name": "Linxea Apicil PER",
+   "aliases": [
+    "Linxea PER",
+    "Linxea Zen PER",
+    "Intencial Liberalys Retraite"
+   ],
+   "kind": "retirement",
+   "distributor": "Linxea",
+   "insurer": "APICIL Epargne Retraite",
+   "uc_fee": 0.6,
+   "euro_fee": 0.85,
+   "source": "https://www.linxea.com/per/linxea-per/",
+   "as_of": null,
+   "notes": "There is no product called 'Linxea Zen PER': Linxea's Apicil PER is 'Linxea Apicil PER', underlying contract INTENCIAL Liberalys Retraite. The figures (UC 0,6%, Apicil Euro Garanti 0,85%) come from Linxea's product page (undated). The contract's generic CG and Intencial fee table (2025-05) only give caps: 1% max on Apicil Euro Garanti and on UC in gestion libre/horizon, with higher caps for gestion deleguee (1,90%), libre smart (1,80%), pilotee (1,80%). Gestion horizon retraite: no extra fee."
+  },
+  {
+   "name": "Lucya Cardif",
+   "aliases": [],
+   "kind": "life_insurance",
+   "distributor": "Lucya (Assurancevie.com)",
+   "insurer": "Cardif Assurance Vie (BNP Paribas)",
+   "uc_fee": 0.5,
+   "euro_fee": 0.7,
+   "source": "https://lucya.com/app/uploads/2026/02/frais-lucya-cardif.pdf (Date de mise a jour : Juillet 2025); https://lucya.com/assurance-vie/lucya-cardif/",
+   "as_of": "2025-07",
+   "notes": "euro_fee is for the Fonds general (0,70% max). Fonds Euro Private Strategies: not stated on the fee table (the product page footnote mentions a '3% max' management fee basis). Gestion deleguee (conseillee par Lucya): +0,25%/yr on UC. ETF and titres vifs: 0,10% max transaction fee. Association fee 10 EUR. Lucya also sells Lucya CNP, Lucya Abeille, Lucya by AXA."
+  },
+  {
+   "name": "Lucya Cardif PER",
+   "aliases": [
+    "PER Lucya Cardif",
+    "Lucya Cardif Retraite"
+   ],
+   "kind": "retirement",
+   "distributor": "Lucya (Assurancevie.com)",
+   "insurer": "Cardif Retraite (BNP Paribas)",
+   "uc_fee": 0.5,
+   "euro_fee": 0.7,
+   "source": "https://lucya.com/app/uploads/2026/02/frais-lucya-cardif-per.pdf (Date de mise a jour : juillet 2025); https://lucya.com/plan-epargne-retraite/lucya-cardif-per/",
+   "as_of": "2025-07",
+   "notes": "euro_fee is for the Fonds general Retraite. Gestion pilotee par horizon: 0,50% maximum per the fee table. Gestion deleguee Lucya: +0,25% (0,75% total on UC per the FAQ). Association fee 20 EUR."
+  },
+  {
+   "name": "Placement-direct Vie",
+   "aliases": [
+    "Placement direct Vie"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Placement-direct",
+   "insurer": "SwissLife Assurance et Patrimoine",
+   "uc_fee": 0.5,
+   "euro_fee": 0.6,
+   "source": "https://static.placement-direct.fr/documents/fiche-synthetique-des-frais-placement-direct-vie.pdf (Date de mise a jour : Avril 2026); https://www.placement-direct.fr/assurance-vie/placement-direct-vie",
+   "as_of": "2026-04",
+   "notes": "Shares held directly (titres vifs): 0,80%/yr. Allocation deleguee: +0,40%/yr, or +0,70% for the 'Opportunites 100% Trackers' allocation. Placement-direct also sells Placement-direct Euro+ (SwissLife), Essentiel (Generali) and Patrimoine (Garance), not covered here."
+  },
+  {
+   "name": "PER Placement-direct",
+   "aliases": [
+    "Placement-direct PER",
+    "Placement direct PER"
+   ],
+   "kind": "retirement",
+   "distributor": "Placement-direct",
+   "insurer": "SwissLife Assurance Retraite",
+   "uc_fee": 0.6,
+   "euro_fee": 0.6,
+   "source": "https://static.placement-direct.fr/documents/fiche-synthetique-des-frais-per-placement-direct.pdf (Date de mise a jour : Avril 2026); https://www.placement-direct.fr/retraite/per-placement-direct",
+   "as_of": "2026-04",
+   "notes": "Insurer is SwissLife (not Suravenir). Same 0,60% in gestion libre and in gestion pilotee par horizon. Association (AGIS) fee 25 EUR. Placement-direct also sells 'Placement-direct Retraite ISR' (UMR), not covered."
+  },
+  {
+   "name": "BoursoVie",
+   "aliases": [
+    "BoursoBank Vie",
+    "Boursorama Vie",
+    "Bourso Vie"
+   ],
+   "kind": "life_insurance",
+   "distributor": "BoursoBank",
+   "insurer": "Generali Vie",
+   "uc_fee": 0.75,
+   "euro_fee": 0.75,
+   "source": "https://s.brsimg.com/content/pdf/banque/cg/cg-brsvie.pdf (Notice/CG BoursoVie, Juillet 2025); https://www.boursobank.com/epargne/assurance-vie/",
+   "as_of": "2025-07",
+   "notes": "UC, ETF and shares: 0,1875%/quarter max = 0,75%/yr max. Fonds euros Euro Exclusif and Eurossima: 0,75% max. Gestion pilotee: no mandate fee. Legacy 'Ex Direct' (ex ING Direct Vie) contracts have their own CG (https://s.brsimg.com/content/pdf/avie/cg-ing-direct-vie-decembre-2021.pdf), not checked."
+  },
+  {
+   "name": "PERin MATLA",
+   "aliases": [
+    "PER MATLA",
+    "BoursoBank PER",
+    "Boursorama PER",
+    "Matla"
+   ],
+   "kind": "retirement",
+   "distributor": "BoursoBank",
+   "insurer": "Oradea Vie (Societe Generale Assurances)",
+   "uc_fee": 0.5,
+   "euro_fee": 0.5,
+   "source": "https://www.boursobank.com/epargne/plan-epargne-retraite-individuel-perin-matla",
+   "as_of": null,
+   "notes": "Product page FAQ: 'Frais de gestion du contrat sur les unites de comptes et sur le fonds en Euros : 0,50%'. Pilotage horizon retraite adds an allocation fee: the FAQ says 0,37%/yr max, the fee breakdown on the same page says 0,35%. The page is undated; the notice was not reachable without signing in."
+  },
+  {
+   "name": "Fortuneo Vie",
+   "aliases": [],
+   "kind": "life_insurance",
+   "distributor": "Fortuneo",
+   "insurer": "Suravenir",
+   "uc_fee": 0.75,
+   "euro_fee": 0.6,
+   "source": "https://www.fortuneo.fr/files/notice-assurance-vie.pdf (Notice - Octobre 2023, ref. 5468-2 (10.2023)); https://www.fortuneo.fr/assurance-vie",
+   "as_of": "2023-10",
+   "notes": "Gestion libre: UC 0,75%; Suravenir Rendement 2 0,60%; Suravenir Opportunites 2 '3,00% maximum'. Gestion sous mandat: UC 0,85%, fonds euros (Suravenir Rendement) 0,60%. Current product page shows the same figures."
+  },
+  {
+   "name": "Fortuneo PER",
+   "aliases": [],
+   "kind": "retirement",
+   "distributor": "Fortuneo",
+   "insurer": "Suravenir",
+   "uc_fee": 0.5,
+   "euro_fee": 0.7,
+   "source": "https://www.fortuneo.fr/files/notice-per.pdf (Notice Aout 2026, ref. 5670-1 (08.2026)); https://www.fortuneo.fr/per-plan-epargne-retraite/gestion-libre",
+   "as_of": "2026-08",
+   "notes": "Gestion libre: UC 0,50%, fonds euros 0,70%. Gestion a horizon: UC 0,70%, fonds euros 0,70%. +0,14% on all fees if the optional accidental-death guarantee is chosen."
+  },
+  {
+   "name": "Bourse Direct Horizon",
+   "aliases": [
+    "BD Horizon"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Bourse Direct",
+   "insurer": "Generali Vie",
+   "uc_fee": 0.65,
+   "euro_fee": 0.75,
+   "source": "https://www.generali.fr/sites/default/files-d8/2026-08/Bourse-Direct-Horizon.pdf (Generali fee table, file dated 2026-08-05, fund averages au 31/12/2025)",
+   "as_of": "2026-08",
+   "notes": "Insurer's fee table: fonds euros 0,75% max (Netissima), UC 0,65% max, Eurocroissance 0,75% max, gestion pilotee +0,20% max. boursedirect.fr could not be reached (connection reset). Secondary sources say UC fees went from 0,75% to 0,65% on 1 July 2024; Bourse Direct's 2020 press release still shows 0,75%."
+  },
+  {
+   "name": "e-PER Generali (Bourse Direct)",
+   "aliases": [
+    "e-PER Generali",
+    "Bourse Direct PER",
+    "PER Bourse Direct",
+    "Bourse Direct Horizon PER",
+    "e-PER Bourse Direct"
+   ],
+   "kind": "retirement",
+   "distributor": "Bourse Direct",
+   "insurer": "Generali Retraite",
+   "uc_fee": 0.65,
+   "euro_fee": null,
+   "source": "Bourse Direct press release, 28 January 2026 (https://ml-eu.globenewswire.com/Resource/Download/3bdf33dd-ff72-4443-99cb-fd4c0069e499); https://www.generali.fr/sites/default/files-d8/2026-08/E-PER-GENERALI.pdf",
+   "as_of": "2026-01-28",
+   "notes": "Bourse Direct's PER (launched Nov 2025) is the e-PER Generali, not a 'Bourse Direct Horizon PER'. UC 0,65% comes from Bourse Direct's own press release. Euro fund fee is not stated by Bourse Direct; Generali's generic E-PER fee table gives caps only (fonds euros 1,00% max, UC 1,60% max, versement 1% max), so euro_fee is null. A comparison site (finance-heros.fr) says 0,80% on the euro fund (secondary, unverified). boursedirect.fr was unreachable."
+  },
+  {
+   "name": "Lucya Abeille",
+   "aliases": [],
+   "kind": "life_insurance",
+   "distributor": "Lucya (Assurancevie.com)",
+   "insurer": "Abeille Vie",
+   "uc_fee": 0.6,
+   "euro_fee": 0.6,
+   "source": "https://lucya.com/app/uploads/2026/02/frais-lucya-abeille-1.pdf (Tableau des frais - Septembre 2025); https://lucya.com/assurance-vie/lucya-abeille/",
+   "as_of": "2025-09",
+   "notes": "Abeille's online-sold life insurance via Lucya. Euro fund: Fonds Abeille Actif Garanti. Gestion sous mandat: +0,20% max. Association fee 15 EUR (paid by Abeille). abeille-assurances.fr and afer.fr return 403 to automated clients, so Abeille's own direct contracts and Afer contracts could not be checked."
+  },
+  {
+   "name": "Lucya Abeille PER",
+   "aliases": [
+    "Abeille PER"
+   ],
+   "kind": "retirement",
+   "distributor": "Lucya (Assurancevie.com)",
+   "insurer": "Abeille Retraite Professionnelle",
+   "uc_fee": 0.6,
+   "euro_fee": 0.6,
+   "source": "https://lucya.com/app/uploads/2026/02/frais-lucya-abeille-per.pdf (Tableau des frais - Septembre 2025); https://lucya.com/plan-epargne-retraite/lucya-abeille-per/",
+   "as_of": "2025-09",
+   "notes": "Euro fund: Abeille RP Garantie Retraite. Gestion evolutive: 0% extra. Gestion sous mandat: +0,20% max. Association fee 20 EUR (paid by Abeille). Abeille's own PER products were not checkable (403)."
+  },
+  {
+   "name": "Lucya CNP",
+   "aliases": [],
+   "kind": "life_insurance",
+   "distributor": "Lucya (Assurancevie.com)",
+   "insurer": "CNP Assurances",
+   "uc_fee": 0.3,
+   "euro_fee": 0.7,
+   "source": "https://lucya.com/app/uploads/2026/03/frais-lucya-cnp.pdf (Document mis a jour le 11 Mars 2026); https://lucya.com/assurance-vie/lucya-cnp/",
+   "as_of": "2026-03-11",
+   "notes": "Extra contract (not requested), included because it has the lowest UC fee found. Euro fund: CNP Lucya Euros B. Shares: 0,3%. Gestion pilotee: +0,25% max."
+  },
+  {
+   "name": "Lucya CNP PER",
+   "aliases": [],
+   "kind": "retirement",
+   "distributor": "Lucya (Assurancevie.com)",
+   "insurer": "CNP Retraite",
+   "uc_fee": 0.3,
+   "euro_fee": 0.8,
+   "source": "https://lucya.com/app/uploads/2026/10/frais-lucya-cnp-per.pdf (Document mis a jour le 30 Septembre 2026); https://lucya.com/plan-epargne-retraite/lucya-cnp-per/",
+   "as_of": "2026-09-30",
+   "notes": "Extra contract (not requested). Euro fund: CNP Lucya PER Euros B. Gestion pilotee (deleguee): +0,25%; gestion Horizon: 0% extra (per the product page)."
+  },
+  {
+   "name": "Yomoni Vie",
+   "aliases": [
+    "Yomoni"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Yomoni",
+   "insurer": "Suravenir",
+   "uc_fee": 1.3,
+   "euro_fee": 0.6,
+   "source": "https://www.suravenir.fr/wp-content/uploads/pdf/9C340_Yomoni-Vie_YOMONI-1.pdf (Transparence de frais YOMONI VIE, mis a jour le 31/03/2023); https://www.yomoni.fr/tarifs",
+   "as_of": "2023-03-31",
+   "notes": "Mandate-only product, so uc_fee is the total wrapper fee: contract 0,60% + Yomoni mandate 0,70%. Yomoni's pricing page shows 0,6% insurer + 0,7% Yomoni + ~0,3% ETF fees = '1,6% max tout compris' (the ETF part is a fund cost, not included in uc_fee). Fonds euros 0,60% max per the insurer table (Yomoni's page does not state a euro fee)."
+  },
+  {
+   "name": "Nalo Patrimoine",
+   "aliases": [
+    "Nalo",
+    "Nalo assurance vie"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Nalo",
+   "insurer": "Generali Vie",
+   "uc_fee": 1.4,
+   "euro_fee": 0.85,
+   "source": "https://www.nalo.fr/notre-tarif; https://27036557.fs1.hubspotusercontent-eu1.net/hubfs/27036557/Document%20du%20site%20Nalo.fr/plaquette-tarifaire-Nalo-Patrimoine.pdf (file dated 2025-12-02, fund averages au 31/12/2024)",
+   "as_of": "2025-12",
+   "notes": "Mandate-only product, so uc_fee is the total wrapper fee: Nalo mandate 0,90% + insurer 0,50%. Euro fund 0,85% = Nalo 0,35% + insurer 0,50%. ETF costs ~0,25% on top. Nalo states a max of 1,65%/yr. Insurer identified from the Generali Vie footer of the fee table (the pricing page doesn't name it)."
+  },
+  {
+   "name": "PER Nalo",
+   "aliases": [
+    "Nalo PER"
+   ],
+   "kind": "retirement",
+   "distributor": "Nalo",
+   "insurer": "APICIL Epargne Retraite",
+   "uc_fee": 1.35,
+   "euro_fee": 0.85,
+   "source": "https://www.nalo.fr/notre-tarif; https://27036557.fs1.hubspotusercontent-eu1.net/hubfs/27036557/Document%20du%20site%20Nalo.fr/plaquette-tarifaire-PER-Nalo.pdf",
+   "as_of": null,
+   "notes": "Mandate-only: UC 1,35% = Nalo 0,90% + insurer 0,45%. Euro fund (APICIL Euro Garanti) 0,85% = Nalo 0,15% + insurer 0,70%. Horizon and deleguee: +0%. ETF costs ~0,25% on top. Fee table undated."
+  },
+  {
+   "name": "Mes Placements Liberté",
+   "aliases": [
+    "Mes Placements Liberté",
+    "mes-placements Liberte"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Meilleurtaux Placement (ex Mes-placements.fr)",
+   "insurer": "Spirica",
+   "uc_fee": 0.5,
+   "euro_fee": 0.7,
+   "source": "https://placement.meilleurtaux.com/images/docs-av/mes-placements-liberte-mes-placements-liberte-capitalisation/mes-placements-liberte-conditions-generales (CG1128 - 01/09/2018); https://placement.meilleurtaux.com/assurance-vie/meilleure-assurance-vie/mes-placements-liberte.html",
+   "as_of": "2018-09-01",
+   "notes": "Closed to new subscriptions (page updated 22 Jan 2026), still managed. euro_fee is for the Fonds Euro General (0,70%). Gestion pilotee: +0,20% to +0,30%/yr depending on the manager. Successor 'Mes Placements Liberte 2' became 'Meilleurtaux Liberte Vie' (separate entry). mesplacements.fr itself was unreachable (connection reset)."
+  },
+  {
+   "name": "Meilleurtaux Liberté Vie",
+   "aliases": [
+    "Meilleurtaux Liberté Vie",
+    "Mes Placements Liberte 2",
+    "Mes Placements Liberté 2"
+   ],
+   "kind": "life_insurance",
+   "distributor": "Meilleurtaux Placement",
+   "insurer": "Spirica",
+   "uc_fee": 0.5,
+   "euro_fee": null,
+   "source": "https://placement.meilleurtaux.com/assurance-vie/meilleure-assurance-vie/meilleurtaux-liberte-vie.html; https://placement.meilleurtaux.com/images/docs-av/mes-placements-liberte-2-mes-placements-liberte-capitalisation-2/mes-placements-liberte-capitalisation-2-conditions-generales.pdf (CG4430 - 01/09/2020, capitalisation version)",
+   "as_of": null,
+   "notes": "Fonds Euro Nouvelle Generation: '2 % maximum / an' (cap only, euro_fee null). Fonds Euro Objectif Climat: no fee stated. Croissance Allocation Long Terme: 1% max + up to 10% performance fee. Gestion pilotee: +0,40%/yr (Prudent, Equilibre, Dynamique), +0,50% (Audacieux); the 2020 CG said +0,20% to +0,30%."
+  },
+  {
+   "name": "Meilleurtaux Liberté PER",
+   "aliases": [
+    "Meilleurtaux Liberté PER",
+    "Mes Placements Liberte PER",
+    "Mes Placements Liberté PER",
+    "Mes Placements Retraite"
+   ],
+   "kind": "retirement",
+   "distributor": "Meilleurtaux Placement",
+   "insurer": "Spirica",
+   "uc_fee": 0.5,
+   "euro_fee": null,
+   "source": "https://placement.meilleurtaux.com/retraite/per/meilleur-per/meilleurtaux-liberte-per.html",
+   "as_of": null,
+   "notes": "No product named 'Mes Placements Retraite' was found; Mes-placements' PER was 'Mes Placements Liberte PER', now 'Meilleurtaux Liberte PER' (rename visible in the 2020 Meilleurtaux article URL). Fonds Euro PER Nouvelle Generation: '2 % maximum / an' (cap only, euro_fee null). Gestion pilotee: +0,40% (Prudent/Equilibre/Dynamique), +0,50% (Audacieux). Croissance Allocation Long Terme: 1% max. Product page undated."
+  }
+ ]
+}

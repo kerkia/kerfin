@@ -999,3 +999,22 @@ th:hover .sort-mark.idle {
   margin-right: 10px;
   color: var(--text);
 }
+
+/* Fees & income */
+
+.section-title {
+  margin-top: 12px;
+}
+.kpi-row.compact {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.kpi-row.compact .kpi-value {
+  font-size: 22px;
+}
+
+/* Grid cells can shrink below their charts' width, which follows the cell's. */
+.grid-2 > * {
+  min-width: 0;
+}

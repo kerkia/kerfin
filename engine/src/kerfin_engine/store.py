@@ -16,7 +16,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from kerfin_engine import insurers
+from kerfin_engine import contract_fees, insurers
 from kerfin_engine.domain import Account, AccountKind, Holding, Transaction
 
 SCHEMA = """
@@ -52,6 +52,7 @@ CREATE TABLE accounts (
     kind_override TEXT,            -- the user's choice, kept across syncs
     label_override TEXT,           -- the name the user gave, kept across syncs
     insurer TEXT,                  -- life insurance and PER: set by the user
+    fee_rate TEXT,                 -- the contract's yearly fees as a fraction: set by the user
     UNIQUE (connection_id, external_id)
 );
 CREATE TABLE holdings (
@@ -67,7 +68,8 @@ CREATE TABLE holdings (
     unit_value_currency TEXT,
     security_type TEXT,
     fees TEXT,
-    match TEXT                     -- how the security was found (see domain.Holding)
+    match TEXT,                    -- how the security was found (see domain.Holding)
+    annual_yield TEXT              -- yearly yield the source states, as a fraction
 );
 -- Market data for the securities held: where their prices come from, and the prices.
 CREATE TABLE securities (
@@ -86,6 +88,12 @@ CREATE TABLE prices (
     isin TEXT NOT NULL,
     date TEXT NOT NULL,
     close TEXT NOT NULL,           -- adjusted for distributions, in the security's currency
+    PRIMARY KEY (isin, date)
+);
+CREATE TABLE dividends (
+    isin TEXT NOT NULL,
+    date TEXT NOT NULL,            -- ex-dividend date
+    amount TEXT NOT NULL,          -- per unit, in the security's currency
     PRIMARY KEY (isin, date)
 );
 CREATE TABLE fx_rates (
@@ -111,7 +119,7 @@ CREATE TABLE balance_history (
 );
 CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Steps from each older schema version to the next.
 MIGRATIONS = {
@@ -139,6 +147,12 @@ MIGRATIONS = {
         "ALTER TABLE securities ADD COLUMN industry TEXT",
         "ALTER TABLE securities ADD COLUMN cfi TEXT",
         "ALTER TABLE securities ADD COLUMN classified_at TEXT",
+    ),
+    7: (
+        "ALTER TABLE accounts ADD COLUMN fee_rate TEXT",
+        "ALTER TABLE holdings ADD COLUMN annual_yield TEXT",
+        "CREATE TABLE dividends (isin TEXT NOT NULL, date TEXT NOT NULL, amount TEXT NOT NULL,"
+        " PRIMARY KEY (isin, date))",
     ),
 }
 
@@ -297,8 +311,8 @@ class Store:
                     db.execute("DELETE FROM holdings WHERE account_id = ?", (account_id,))
                     db.executemany(
                         "INSERT INTO holdings (account_id, label, isin, quantity, unit_value, unit_price,"
-                        " valuation, currency, value_date, unit_value_currency, security_type, fees, match)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " valuation, currency, value_date, unit_value_currency, security_type, fees, match,"
+                        " annual_yield) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [
                             (
                                 account_id,
@@ -314,6 +328,7 @@ class Store:
                                 h.security_type,
                                 _text(h.fees),
                                 h.match,
+                                _text(h.annual_yield),
                             )
                             for h in holdings
                         ],
@@ -408,9 +423,11 @@ class Store:
         kind: AccountKind | None = None,
         reset_kind: bool = False,
         insurer: str | None = None,
+        fee_rate: Decimal | None = None,
+        clear_fee_rate: bool = False,
     ) -> None:
         """Changes what the user controls. An empty `insurer` clears it; `reset_kind` goes
-        back to the detected kind."""
+        back to the detected kind; `clear_fee_rate` forgets the contract's fees."""
         with self.transaction() as db:
             if label is not None:
                 # Kept apart from the source's name, which each sync refreshes.
@@ -426,6 +443,11 @@ class Store:
                 db.execute(
                     "UPDATE accounts SET insurer = ? WHERE id = ?", (insurer.strip() or None, account_id)
                 )
+            if fee_rate is not None or clear_fee_rate:
+                db.execute(
+                    "UPDATE accounts SET fee_rate = ? WHERE id = ?",
+                    (None if clear_fee_rate else str(fee_rate), account_id),
+                )
 
     def delete_manual_account(self, account_id: str) -> None:
         with self.transaction() as db:
@@ -436,8 +458,8 @@ class Store:
             "SELECT a.id, a.connection_id, c.institution, a.institution_name,"
             " COALESCE(a.label_override, a.label) AS label,"
             " COALESCE(a.kind_override, a.kind) AS kind, a.kind AS kind_detected,"
-            " a.kind_override IS NOT NULL AS kind_set, a.insurer, a.subtype, a.number, a.currency,"
-            " a.balance, a.opening_date, a.updated_at, a.hidden"
+            " a.kind_override IS NOT NULL AS kind_set, a.insurer, a.fee_rate, a.subtype, a.number,"
+            " a.currency, a.balance, a.opening_date, a.updated_at, a.hidden"
             " FROM accounts a LEFT JOIN connections c ON c.id = a.connection_id ORDER BY 5"
         )
         for row in rows:
@@ -445,13 +467,15 @@ class Store:
             row["kind_set"] = bool(row["kind_set"])
             # A suggestion from the contract's name until the user sets the insurer.
             row["insurer_suggested"] = None if row["insurer"] else insurers.suggest(row["label"])
+            # The contract's published fees, shown even once the user sets their own.
+            row["fees_suggested"] = contract_fees.suggest(row["label"], row["kind"])
         return rows
 
     def holdings(self, account_id: str | None = None) -> list[dict[str, Any]]:
         """One account's holdings, or every holding (with its account) when `account_id` is None."""
         return self._rows(
             "SELECT account_id, label, isin, quantity, unit_value, unit_price, valuation, currency,"
-            " value_date, unit_value_currency, security_type, fees, match"
+            " value_date, unit_value_currency, security_type, fees, match, annual_yield"
             " FROM holdings WHERE ? IS NULL OR account_id = ? ORDER BY rowid",  # the source's order
             account_id,
             account_id,
@@ -501,6 +525,13 @@ class Store:
                 [(isin, day.isoformat(), str(close)) for day, close in points],
             )
 
+    def save_dividends(self, isin: str, points: Iterable[tuple[date, Decimal]]) -> None:
+        with self.transaction() as db:
+            db.executemany(
+                "INSERT OR REPLACE INTO dividends VALUES (?, ?, ?)",
+                [(isin, day.isoformat(), str(amount)) for day, amount in points],
+            )
+
     def last_rate_date(self, currency: str) -> str | None:
         return self._rows("SELECT MAX(date) AS d FROM fx_rates WHERE currency = ?", currency)[0]["d"]
 
@@ -512,15 +543,18 @@ class Store:
             )
 
     def market(self) -> dict[str, Any]:
-        """Prices and exchange rates as compact series: {key: [[date, value], ...]}."""
+        """Prices, dividends and exchange rates as compact series: {key: [[date, value], ...]}."""
         prices: dict[str, list[list[str]]] = {}
         for row in self._rows("SELECT isin, date, close FROM prices ORDER BY isin, date"):
             prices.setdefault(row["isin"], []).append([row["date"], row["close"]])
         rates: dict[str, list[list[str]]] = {}
         for row in self._rows("SELECT currency, date, rate FROM fx_rates ORDER BY currency, date"):
             rates.setdefault(row["currency"], []).append([row["date"], row["rate"]])
+        dividends: dict[str, list[list[str]]] = {}
+        for row in self._rows("SELECT isin, date, amount FROM dividends ORDER BY isin, date"):
+            dividends.setdefault(row["isin"], []).append([row["date"], row["amount"]])
         securities = {row["isin"]: row for row in self._rows("SELECT * FROM securities")}
-        return {"securities": securities, "prices": prices, "fx": rates}
+        return {"securities": securities, "prices": prices, "fx": rates, "dividends": dividends}
 
     def transactions(self, account_id: str, limit: int = 100) -> list[dict[str, Any]]:
         rows = self._rows(

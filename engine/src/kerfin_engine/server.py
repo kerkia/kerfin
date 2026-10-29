@@ -478,6 +478,12 @@ def update_account(app: App, match: re.Match[str], body: dict[str, Any]) -> Any:
     except ValueError:
         raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "kind") from None
     insurer = body.get("insurer")
+    # "fee_rate": the contract's yearly fees as a fraction ("0.006"), or null to forget them.
+    fee_rate = None
+    if body.get("fee_rate") is not None:
+        fee_rate = _decimal(body, "fee_rate")
+        if not fee_rate.is_finite() or not 0 <= fee_rate < Decimal("0.1"):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "fee_rate")
     store.update_account(
         match["id"],
         label=_str(body, "label") if "label" in body else None,
@@ -485,6 +491,8 @@ def update_account(app: App, match: re.Match[str], body: dict[str, Any]) -> Any:
         kind=chosen,
         reset_kind=kind == "auto",
         insurer=insurer if isinstance(insurer, str) else None,
+        fee_rate=fee_rate,
+        clear_fee_rate="fee_rate" in body and body["fee_rate"] is None,
     )
     app.persist()
     return {}

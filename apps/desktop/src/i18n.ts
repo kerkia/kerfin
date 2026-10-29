@@ -26,6 +26,50 @@ const en = {
   "nav.investments": "Investments",
   "nav.types": "Account types",
   "nav.insurance": "Assurance-vie & PER",
+  "nav.income": "Fees & income",
+  "fees.title": "Fees",
+  "fees.yearly": "Fees per year",
+  "fees.ofValue": "{rate} of {value} invested",
+  "fees.contractsUnknown": "Contract fees not known for: {names}.",
+  "fees.setInAccounts": "Set them in Accounts",
+  "fees.fundUnknown": "Finary gives no ongoing charges for {value} of funds: their fees are not counted.",
+  "fees.byAccount": "By account",
+  "fees.account": "Account",
+  "fees.funds": "Funds /yr",
+  "fees.contract": "Contract /yr",
+  "fees.perYear": "Per year",
+  "fees.notSet": "not set",
+  "fees.unknown": "unknown",
+  "fees.suggestedHelp": "Published fees of this contract (see Accounts to change them)",
+  "fees.userHelp": "Set by you in Accounts",
+  "fees.overTime": "What fees cost over time",
+  "fees.growth": "Assumed growth before fees",
+  "fees.growthOption": "{rate} a year",
+  "fees.years": "{n} years",
+  "fees.overTimeHelp": "Value lost to fees of {rate} a year on today's investments, if they grew {growth} a year before fees, with nothing added or withdrawn.",
+  "fees.byHolding": "Fees by holding",
+  "fees.sources":
+    "Funds' ongoing charges from Finary; shares have none, and a euro fund's fees are its contract's. Contract fees: yours, or the contract's published fees (marked *).",
+  "income.title": "Passive income",
+  "income.expected": "Income over the next 12 months",
+  "income.net": "Income minus fees",
+  "income.netHelp": "Over a year, at today's holdings",
+  "income.byMonth": "Expected distributions by month",
+  "income.byMonthHelp": "Last year's distributions for the units held today, expected again in the same month.",
+  "income.statedApart": "Interest stated by Finary ({value} a year) is credited once a year and not shown here.",
+  "income.noDistributions": "None of today's holdings paid distributions over the last year.",
+  "income.reinvestedHelp": "{value} is in {n} funds or shares that paid nothing over the last two years: accumulating funds reinvest their income, which shows in their price instead.",
+  "income.byHolding": "Income by holding",
+  "income.source": "Source",
+  "income.source.distributions": "paid",
+  "income.source.stated": "stated by Finary",
+  "income.source.reinvested": "reinvested",
+  "income.payments": "Payments /yr",
+  "income.yield": "Yield",
+  "income.perYear": "Per year",
+  "income.none": "No distributions or stated interest yet.",
+  "income.sources":
+    "Distributions per unit from Yahoo Finance's quote data, for the units held today; interest of euro funds and similar lines as Finary states it. Savings accounts' interest isn't in Finary's data.",
   "types.title": "Account types",
   "types.shares": "Share of each type",
   "types.amounts": "Amount by type",
@@ -189,6 +233,11 @@ const en = {
     "Finary lists {values} values and {funds} funds for this account, so pairing them in order is surely wrong somewhere. Lines are numbered in Finary's order: check them against Finary.",
   "detail.insurer": "Insurer",
   "detail.insurerUnknown": "e.g. Spirica, Suravenir",
+  "detail.feeRate": "Contract fees (% a year)",
+  "detail.feeRateSuggested": "{rate} published for {contract}",
+  "detail.feeRateNone": "e.g. 0.5",
+  "detail.feeRateSource": "Source: {source}",
+  "detail.feeRateInvalid": "A yearly rate below 10%, e.g. 0.5",
   "detail.insuredBy": "insured by {insurer}",
   "detail.rename": "Name",
   "detail.save": "Save",
@@ -347,6 +396,18 @@ export function percent(value: number, signed = false): string {
     maximumFractionDigits: 1,
     signDisplay: signed ? "exceptZero" : "auto",
   }).format(value);
+}
+
+/** A yearly rate (fees, yields): finer than `percent`, as 0.25%. */
+export function rate(value: number): string {
+  return new Intl.NumberFormat(LOCALE, { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+/** A month (YYYY-MM) as its short name, and with its year. */
+export function monthName(month: string, withYear = false): string {
+  return new Intl.DateTimeFormat(LOCALE, { month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" }).format(
+    new Date(`${month}-01T00:00:00Z`),
+  );
 }
 
 export function shortDate(iso: string): string {

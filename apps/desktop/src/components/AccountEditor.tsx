@@ -6,12 +6,13 @@ import { useState } from "react";
 
 import { useData } from "../data";
 import { engine } from "../engine";
-import { KIND_OPTIONS, ago, kindLabel, t } from "../i18n";
+import { KIND_OPTIONS, ago, kindLabel, rate, t } from "../i18n";
 
 interface Changes {
   label?: string;
   kind?: AccountKind;
   insurer?: string;
+  feeRate?: string; // percent, as typed
   balance?: string;
   hidden?: boolean;
 }
@@ -28,6 +29,11 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
   // The insurer known from the contract's name fills the field until the user sets one.
   const insurer = changes.insurer ?? account.insurer ?? account.insurer_suggested ?? "";
   const balance = changes.balance ?? account.balance ?? "";
+  // Contract fees: shown in percent, kept as a fraction.
+  const feeRate = changes.feeRate ?? (account.fee_rate ? String(Number((Number(account.fee_rate) * 100).toFixed(4))) : "");
+  const feePercent = feeRate.trim() === "" ? null : Number(feeRate.replace(/\s/g, "").replace(",", "."));
+  const feeInvalid = feePercent !== null && !(Number.isFinite(feePercent) && feePercent >= 0 && feePercent < 10);
+  const suggested = account.fees_suggested;
   const hidden = changes.hidden ?? account.hidden;
 
   async function save() {
@@ -45,6 +51,8 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
           ? { insurer: account.insurer_suggested }
           : {}),
         ...(manual && number && Number.isFinite(Number(number)) ? { balance: number } : {}),
+        // An emptied field goes back to the contract's published fees.
+        ...(changes.feeRate !== undefined ? { fee_rate: feePercent === null ? null : String(feePercent / 100) } : {}),
       });
       await refresh();
       onClose();
@@ -94,6 +102,30 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
             />
           </div>
         )}
+        {INSURED_KINDS.has(kind) && (
+          <div className="field" style={{ flex: 1.2 }}>
+            <label htmlFor={`fees-${account.id}`}>{t("detail.feeRate")}</label>
+            <input
+              id={`fees-${account.id}`}
+              className="input num"
+              inputMode="decimal"
+              value={feeRate}
+              aria-invalid={feeInvalid}
+              placeholder={suggested ? String(Number((Number(suggested.uc) * 100).toFixed(4))) : t("detail.feeRateNone")}
+              onChange={(e) => change({ feeRate: e.target.value })}
+            />
+            {feeInvalid ? (
+              <span className="small error-text">{t("detail.feeRateInvalid")}</span>
+            ) : (
+              suggested &&
+              !feeRate && (
+                <span className="small muted" title={t("detail.feeRateSource", { source: suggested.source })}>
+                  {t("detail.feeRateSuggested", { rate: rate(Number(suggested.uc)), contract: suggested.contract })}
+                </span>
+              )
+            )}
+          </div>
+        )}
         {manual && (
           <div className="field" style={{ flex: 1 }}>
             <label htmlFor={`balance-${account.id}`}>{t("detail.updateBalance")}</label>
@@ -123,7 +155,7 @@ export function AccountEditor({ account, onClose }: { account: Account; onClose:
         <button className="btn" onClick={onClose}>
           {t("add.cancel")}
         </button>
-        <button className="btn primary" disabled={busy} onClick={() => void save()}>
+        <button className="btn primary" disabled={busy || feeInvalid} onClick={() => void save()}>
           {t("detail.save")}
         </button>
       </div>

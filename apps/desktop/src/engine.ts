@@ -118,7 +118,14 @@ export const engine = {
     call<{ holdings: Holding[]; transactions: Transaction[] }>("GET", `/api/accounts/${id}`),
   updateAccount: (
     id: string,
-    changes: { label?: string; hidden?: boolean; balance?: string; kind?: string; insurer?: string },
+    changes: {
+      label?: string;
+      hidden?: boolean;
+      balance?: string;
+      kind?: string;
+      insurer?: string;
+      fee_rate?: string | null;
+    },
   ) =>
     call<object>("PATCH", `/api/accounts/${id}`, changes),
   deleteAccount: (id: string) => call<object>("DELETE", `/api/accounts/${id}`),

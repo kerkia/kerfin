@@ -130,11 +130,11 @@ def test_insurer_is_suggested_from_the_contract_name() -> None:
 def test_older_vaults_are_migrated() -> None:
     store = Store.create()
     # Back to the first schema: what versions 2 and 3 added goes.
-    for column in ("kind_override", "insurer", "label_override"):
+    for column in ("kind_override", "insurer", "label_override", "fee_rate"):
         store._db.execute(f"ALTER TABLE accounts DROP COLUMN {column}")
-    for column in ("unit_value_currency", "security_type", "fees", "match"):
+    for column in ("unit_value_currency", "security_type", "fees", "match", "annual_yield"):
         store._db.execute(f"ALTER TABLE holdings DROP COLUMN {column}")
-    for table in ("securities", "prices", "fx_rates"):
+    for table in ("securities", "prices", "fx_rates", "dividends"):
         store._db.execute(f"DROP TABLE {table}")
     store._db.execute("PRAGMA user_version = 1")
     store.add_manual_account("Baloise", "Luxavie", AccountKind.LIFE_INSURANCE, Decimal("5"), "EUR")
@@ -143,7 +143,8 @@ def test_older_vaults_are_migrated() -> None:
     [account] = migrated.accounts()
     assert account["insurer"] is None and not account["kind_set"]
     assert migrated.holdings() == [] and migrated.market()["prices"] == {}
-    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 7
+    assert migrated._db.execute("PRAGMA user_version").fetchone()[0] == 8
+    assert account["fee_rate"] is None and migrated.market()["dividends"] == {}
 
 
 def test_stray_card_choices_are_cleared() -> None:
@@ -156,6 +157,9 @@ def test_stray_card_choices_are_cleared() -> None:
     store._db.execute("ALTER TABLE accounts DROP COLUMN label_override")  # added by version 6
     for column in ("industry", "cfi", "classified_at"):  # added by version 7
         store._db.execute(f"ALTER TABLE securities DROP COLUMN {column}")
+    store._db.execute("ALTER TABLE accounts DROP COLUMN fee_rate")  # added by version 8
+    store._db.execute("ALTER TABLE holdings DROP COLUMN annual_yield")
+    store._db.execute("DROP TABLE dividends")
     store._db.execute("PRAGMA user_version = 3")
 
     [account] = Store.load(store.dump()).accounts()

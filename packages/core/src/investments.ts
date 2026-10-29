@@ -15,6 +15,7 @@ export interface MarketHolding {
   security_type: string | null;
   fees: string | null; // yearly, as a fraction
   match: HoldingMatch | null;
+  annual_yield?: string | null; // yearly yield the source states for the line, as a fraction
 }
 
 export interface SecurityInfo {
@@ -45,6 +46,7 @@ export interface Market {
   securities: Record<string, SecurityInfo>;
   prices: Record<string, [string, string][]>; // isin -> [date, close] in the security's currency
   fx: Record<string, [string, string][]>; // currency -> [date, units per euro]
+  dividends?: Record<string, [string, string][]>; // isin -> [ex-date, amount per unit] in the security's currency
   indices: IndexProfile[];
 }
 
@@ -177,6 +179,11 @@ function natureOf(holding: MarketHolding, security?: SecurityInfo): Nature | nul
     return "fund";
   }
   return null;
+}
+
+/** Whether a holding is a company's shares (or a REIT's), not a fund or a note. */
+export function isCompanyShare(holding: MarketHolding, security?: SecurityInfo): boolean {
+  return natureOf(holding, security) === "company";
 }
 
 function nameTheme(holding: MarketHolding): Theme | null {
@@ -402,7 +409,7 @@ function perEuro(market: Market, currency: string, date: string): number | null 
   return valueAt(market.fx[currency], date) ?? (market.fx[currency]?.length ? amount(market.fx[currency]![0]![1]) : null);
 }
 
-function convert(market: Market, value: number, from: string, to: string, date: string): number | null {
+export function convert(market: Market, value: number, from: string, to: string, date: string): number | null {
   if (from === to) return value;
   const source = perEuro(market, from, date);
   const target = perEuro(market, to, date);

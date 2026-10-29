@@ -195,6 +195,100 @@ export function LineChart({ series, currency = "EUR" }: { series: HistoryPoint[]
   );
 }
 
+const COLUMN_HEIGHT = 180;
+const COLUMN_PAD = { top: 12, right: 8, bottom: 24, left: 52 };
+
+/**
+ * One column per period, one hue, anchored on a zero baseline, with a tooltip per column.
+ * `label` names a column under the axis; `title` names it in the tooltip.
+ */
+export function ColumnChart({
+  columns,
+  label,
+  title,
+}: {
+  columns: { key: string; value: number }[];
+  label: (key: string) => string;
+  title: (key: string) => string;
+}) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(600);
+  const [hover, setHover] = useState<number | null>(null);
+
+  useEffect(() => {
+    const element = wrap.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const ticks = niceTicks(0, Math.max(...columns.map((c) => c.value), 1));
+  const yMax = ticks[ticks.length - 1]!;
+  const innerW = Math.max(width - COLUMN_PAD.left - COLUMN_PAD.right, 10);
+  const innerH = COLUMN_HEIGHT - COLUMN_PAD.top - COLUMN_PAD.bottom;
+  const slot = innerW / Math.max(columns.length, 1);
+  const barW = Math.max(Math.min(slot * 0.6, 36), 4);
+  const y = (value: number) => COLUMN_PAD.top + innerH - (value / yMax) * innerH;
+  const focus = hover === null ? null : columns[hover];
+
+  return (
+    <div className="chart-wrap" ref={wrap}>
+      <svg
+        className="chart-svg"
+        width={width}
+        height={COLUMN_HEIGHT}
+        onMouseLeave={() => setHover(null)}
+        role="img"
+        aria-label={columns.map((c) => `${title(c.key)}: ${money(c.value)}`).join(", ")}
+      >
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line x1={COLUMN_PAD.left} x2={width - COLUMN_PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
+            <text x={COLUMN_PAD.left - 8} y={y(tick) + 4} textAnchor="end">
+              {compactMoney(tick)}
+            </text>
+          </g>
+        ))}
+        {columns.map((column, i) => {
+          const x = COLUMN_PAD.left + slot * i + (slot - barW) / 2;
+          const top = y(column.value);
+          const height = COLUMN_PAD.top + innerH - top;
+          const radius = Math.min(4, height / 2, barW / 2);
+          // Rounded at the data end only; square on the baseline.
+          const path =
+            height > 0
+              ? `M${x},${top + height}V${top + radius}Q${x},${top} ${x + radius},${top}H${x + barW - radius}` +
+                `Q${x + barW},${top} ${x + barW},${top + radius}V${top + height}Z`
+              : "";
+          return (
+            <g key={column.key} onMouseEnter={() => setHover(i)}>
+              {/* The hit area spans the whole slot, taller than the column. */}
+              <rect x={COLUMN_PAD.left + slot * i} y={COLUMN_PAD.top} width={slot} height={innerH} fill="transparent" />
+              {path && <path d={path} fill="var(--accent)" opacity={hover === null || hover === i ? 1 : 0.55} />}
+              <text x={x + barW / 2} y={COLUMN_HEIGHT - 6} textAnchor="middle">
+                {label(column.key)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      {focus && hover !== null && (
+        <div
+          className="tooltip"
+          style={{
+            left: Math.min(COLUMN_PAD.left + slot * hover + slot / 2 + 8, width - 160),
+            top: Math.max(y(focus.value) - 52, 0),
+          }}
+        >
+          <div className="muted">{title(focus.key)}</div>
+          <div className="num">{money(focus.value, "EUR", { maximumFractionDigits: 0 })}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface DonutSlice {
   key: string;
   label: string;

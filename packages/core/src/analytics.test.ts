@@ -26,6 +26,7 @@ function account(id: string, kind: AccountKind, balance: string | null, extra: P
     kind_set: false,
     insurer: null,
     insurer_suggested: null,
+    fee_rate: null,
     subtype: null,
     number: null,
     currency: "EUR",

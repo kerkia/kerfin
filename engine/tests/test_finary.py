@@ -259,6 +259,18 @@ def test_holdings_follow_links_whose_type_differs_from_the_resource() -> None:
     assert holding.fees == Decimal("0.002")  # 0.2 means 0.2%
 
 
+@pytest.mark.parametrize(
+    ("given", "fraction"), [("2.5", Decimal("0.025")), ("0.025", Decimal("0.025")), (None, None)]
+)
+def test_a_line_s_stated_yield_is_kept_as_a_fraction(given: str | None, fraction: Decimal | None) -> None:
+    attributes = {"name": "Fonds euros", "current_value": "1000", "current_value_currency": "EUR"}
+    payload = {
+        "data": [{"id": "h1", "type": "holdings", "attributes": {**attributes, "annual_yield": given}}]
+    }
+    [holding] = [h for hs in finary.holdings_from(payload).values() for h in hs]
+    assert holding.annual_yield == fraction
+
+
 def test_link_diagnostics_show_formats_but_no_ids(caplog: pytest.LogCaptureFixture) -> None:
     payload = {
         "data": [

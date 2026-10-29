@@ -4,6 +4,7 @@
   candidate is only kept if its latest price matches the price the source (Finary)
   gives for the security, so a wrong share class is never used. Closes are adjusted for
   distributions, so performance includes them.
+- Distributions (dividends) per unit, from the same quote data, for passive income.
 - Exchange rates: the ECB's daily reference rates (official, free).
 - What each security is: its CFI code (ISO 10962) from ESMA's register of financial
   instruments (FIRDS, the EU regulator's open data), which tells company shares, funds
@@ -38,6 +39,7 @@ WIKIDATA = "https://query.wikidata.org/sparql"
 FIRDS = "https://registers.esma.europa.eu/solr/esma_registers_firds/select"
 TIMEOUT = 30
 HISTORY_YEARS = 15
+DIVIDEND_YEARS = 2
 # Currencies offered for display, fetched even when no security is quoted in them.
 DISPLAY_CURRENCIES = ("USD", "GBP", "CHF")
 PRICE_TOLERANCE = Decimal("0.03")  # a candidate's latest price may differ by 3% (dates differ)
@@ -138,6 +140,28 @@ class Sources:
                 points.append((datetime.fromtimestamp(timestamp, UTC).date(), Decimal(str(close))))
         return result.get("meta", {}).get("currency"), points
 
+    def dividends(self, symbol: str, start: date) -> list[tuple[date, Decimal]]:
+        """Distributions per unit since `start` (ex-dates), in the security's currency."""
+        response = self._session.get(
+            f"{YAHOO}/v8/finance/chart/{symbol}",
+            params={
+                "period1": int(datetime(start.year, start.month, start.day, tzinfo=UTC).timestamp()),
+                "period2": int(datetime.now(UTC).timestamp()),
+                "interval": "1mo",  # light: only the events are wanted
+                "events": "div",
+            },
+            timeout=TIMEOUT,
+        )
+        response.raise_for_status()
+        result = (response.json().get("chart", {}).get("result") or [{}])[0]
+        events = (result.get("events") or {}).get("dividends") or {}
+        points = []
+        for event in events.values():
+            amount = _decimal(event.get("amount"))
+            if amount is not None and event.get("date"):
+                points.append((datetime.fromtimestamp(event["date"], UTC).date(), amount))
+        return sorted(points)
+
     def rates(self, currency: str, start: date) -> list[tuple[date, Decimal]]:
         """ECB reference rates: units of `currency` for one euro."""
         response = self._session.get(
@@ -214,11 +238,7 @@ class MarketData:
 
     def _refresh_rates(self, currency: str, today: date) -> None:
         last = self._store.last_rate_date(currency)
-        start = (
-            date.fromisoformat(last) + timedelta(days=1)
-            if last
-            else today.replace(year=today.year - HISTORY_YEARS)
-        )
+        start = date.fromisoformat(last) + timedelta(days=1) if last else _years_before(today, HISTORY_YEARS)
         if start <= today:
             try:
                 points = self._sources.rates(currency, start)
@@ -263,14 +283,15 @@ class MarketData:
         if not known or not known["symbol"]:
             return False
         last = self._store.last_price_date(isin)
-        start = (
-            date.fromisoformat(last) + timedelta(days=1)
-            if last
-            else today.replace(year=today.year - HISTORY_YEARS)
-        )
+        start = date.fromisoformat(last) + timedelta(days=1) if last else _years_before(today, HISTORY_YEARS)
         if start <= today:
             _, points = self._sources.history(known["symbol"], start)
             self._store.save_prices(isin, points)
+        # The last two years' distributions, for passive income (a year to project from, and
+        # the one before to tell regular payers).
+        self._store.save_dividends(
+            isin, self._sources.dividends(known["symbol"], _years_before(today, DIVIDEND_YEARS))
+        )
         return True
 
     def _classify(self, isin: str, known: dict[str, Any]) -> None:
@@ -310,6 +331,14 @@ class MarketData:
             if latest is not None and abs(latest / reference - 1) <= PRICE_TOLERANCE:
                 return candidate, currency
         return None, None
+
+
+def _years_before(day: date, years: int) -> date:
+    """The same day `years` earlier (28 February for a 29th that year doesn't have)."""
+    try:
+        return day.replace(year=day.year - years)
+    except ValueError:
+        return day.replace(year=day.year - years, day=28)
 
 
 def _decimal(value: Any) -> Decimal | None:

@@ -120,6 +120,22 @@ chaining day-to-day returns of the holdings priced on both days, in the chosen c
 All of this lives in the vault: prices aren't personal, but which securities someone holds
 is. The analytics are in `packages/core/src/investments.ts`.
 
+## Fees and passive income
+
+`packages/core/src/fees.ts` adds up each holding's yearly fees: the fund's ongoing charges
+(from Finary; none for shares, and a euro fund's are its contract's) plus, for assurance-vie
+and PER, the contract's management fee. The user sets a contract's rate in Accounts; until
+then Kerfin suggests the contract's published fees from
+`engine/src/kerfin_engine/data/contract_fees.json` (researched from the brokers' product
+pages, with each source and date), matched on the account's name. What fees cost over 10,
+20 and 30 years compares today's value grown at an assumed rate with and without them.
+
+`packages/core/src/income.ts` takes the distributions each security paid over the last
+year (per unit, from Yahoo Finance's quote data, kept for two years), for the units held
+today, and expects them again a year later, month by month. Lines without market data use
+the yield Finary states for them (euro funds' interest). Securities that paid nothing in two
+years count as reinvesting (accumulating funds).
+
 ## Connectors
 
 ### Finary

@@ -542,6 +542,7 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
             _pick(item, ("unit_price", "buying_price", "average_price", "cost_basis_per_unit"))
         )
         fees, _ = _amount(_pick(item, _FEE_KEYS) or _pick(security, _FEE_KEYS))
+        annual_yield, _ = _amount(_pick(item, _YIELD_KEYS))
         by_account.setdefault(None if account is None else str(account), []).append(
             Holding(
                 label=_name(_pick(item, _LABEL_KEYS)) or _name(_pick(security, _LABEL_KEYS)) or isin or "?",
@@ -556,6 +557,7 @@ def holdings_from(payload: Any) -> dict[str | None, list[Holding]]:
                 ),
                 security_type=_name(_pick(item, _SECURITY_TYPE_KEYS) or _pick(security, _SECURITY_TYPE_KEYS)),
                 fees=_fraction(fees),
+                annual_yield=_yield(annual_yield),
                 match=match,
             )
         )
@@ -646,7 +648,7 @@ def _log_links(payload: Any, found: list[Holding]) -> None:
     log.info(
         "Finary holdings: %s of %s with ISIN, %s named; link types %s, included types %s;"
         " link ids %s, included ids %s; same ids %s, link ids equal to holding ids %s,"
-        " one id inside the other %s; types %s, fees %s",
+        " one id inside the other %s; types %s, fees %s, stated yields %s",
         sum(bool(h.isin) for h in found),
         len(found),
         named,
@@ -659,6 +661,8 @@ def _log_links(payload: Any, found: list[Holding]) -> None:
         sum(any(a in b or b in a for b in security_ids) for a in link_ids),
         sorted({str(h.security_type) for h in found}),
         sorted({str(h.fees) for h in found}),
+        # As Finary gives them, to check how they read (percent or fraction).
+        sorted({str(_flat(item).get("annual_yield")) for item in data or [] if isinstance(item, Mapping)}),
     )
 
 
@@ -676,6 +680,17 @@ def _fraction(ratio: Decimal | None) -> Decimal | None:
     if ratio is None:
         return None
     return ratio / 100 if ratio > Decimal("0.1") else ratio
+
+
+_YIELD_KEYS = ("annual_yield", "yield", "interest_rate")
+
+
+def _yield(ratio: Decimal | None) -> Decimal | None:
+    """A yearly yield as a fraction. Sources give 3.5 (percent) or 0.035: yields above 20%
+    a year don't occur on these lines, so values above 0.2 are percentages."""
+    if ratio is None:
+        return None
+    return ratio / 100 if abs(ratio) > Decimal("0.2") else ratio
 
 
 class FinaryConnector:

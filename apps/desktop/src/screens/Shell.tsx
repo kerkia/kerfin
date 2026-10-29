@@ -9,12 +9,13 @@ import { t } from "../i18n";
 import type { useUpdater } from "../updater";
 import { Accounts } from "./Accounts";
 import { AccountTypesPage } from "./AccountTypes";
+import { FeesIncomePage } from "./FeesIncome";
 import { InsurancePage } from "./Insurance";
 import { InvestmentsPage } from "./Investments";
 import { OverviewPage } from "./Overview";
 import { Settings } from "./Settings";
 
-type Page = "overview" | "types" | "investments" | "insurance" | "accounts" | "settings";
+type Page = "overview" | "types" | "investments" | "income" | "insurance" | "accounts" | "settings";
 
 /** The window's top row, above the navigation and every page, while an update waits for a restart. */
 function UpdateBar({ updater }: { updater: ReturnType<typeof useUpdater> }) {
@@ -58,7 +59,7 @@ export function Shell({
                 <span className="brand-mark" />
                 Kerfin
               </div>
-              {(["overview", "types", "investments", "insurance", "accounts", "settings"] as const).map((id) => (
+              {(["overview", "types", "investments", "income", "insurance", "accounts", "settings"] as const).map((id) => (
                 <button
                   key={id}
                   className={page === id ? "nav-item active" : "nav-item"}
@@ -79,6 +80,7 @@ export function Shell({
                 {page === "overview" && <OverviewPage onNavigate={setPage} />}
                 {page === "types" && <AccountTypesPage />}
                 {page === "investments" && <InvestmentsPage />}
+                {page === "income" && <FeesIncomePage onNavigate={setPage} />}
                 {page === "insurance" && <InsurancePage />}
                 {page === "accounts" && <Accounts />}
                 {page === "settings" && <Settings status={status} onStatus={onStatus} updater={updater} />}

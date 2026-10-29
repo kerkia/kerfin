@@ -36,6 +36,9 @@ class FakeSources:
             "US0378331005": [Candidate("AAPL", "Apple Inc.", "EQUITY", "Technology", "Consumer Electronics")],
         }.get(query, [])
 
+    def dividends(self, symbol: str, start: date) -> list[tuple[date, Decimal]]:
+        return [(TODAY - timedelta(days=100), Decimal("0.5"))] if symbol == "AAPL" else []
+
     def instrument_code(self, isin: str) -> str | None:
         return {"US0378331005": "ESVUFR", "IE00B4L5Y983": "CEOGES"}.get(isin)
 
@@ -124,6 +127,17 @@ def test_company_shares_get_their_sector_and_country() -> None:
         "United States",
     )
     assert (security["industry"], security["cfi"]) == ("Consumer Electronics", "ESVUFR")
+
+
+def test_distributions_are_kept_per_unit() -> None:
+    store = store_with(
+        Holding("Apple", Decimal("500"), "EUR", isin="US0378331005", unit_value=Decimal("227.27"))
+    )
+    MarketData(store, FakeSources()).refresh(TODAY)  # type: ignore[arg-type]
+    MarketData(store, FakeSources()).refresh(TODAY)  # type: ignore[arg-type]
+    assert store.market()["dividends"] == {
+        "US0378331005": [[(TODAY - timedelta(days=100)).isoformat(), "0.5"]]
+    }
 
 
 def test_funds_get_their_register_code_even_without_prices() -> None:

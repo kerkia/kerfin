@@ -209,3 +209,15 @@ def test_account_kind_and_insurer_can_be_set(api: Any) -> None:
     assert api("PATCH", f"/api/accounts/{account_id}", {"kind": "bogus"})["status"] == 400
     api("PATCH", f"/api/accounts/{account_id}", {"kind": "auto"})
     assert api("GET", "/api/overview")["accounts"][0]["kind"] == "securities"
+
+
+def test_a_contract_s_fees_can_be_set_and_cleared(api: Any) -> None:
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    body = {"institution_name": "LinXea", "label": "Linxea Avenir", "kind": "life_insurance", "balance": "10"}
+    account_id = api("POST", "/api/accounts", body)["id"]
+    api("PATCH", f"/api/accounts/{account_id}", {"fee_rate": "0.005"})
+    assert api("GET", "/api/overview")["accounts"][0]["fee_rate"] == "0.005"
+    for wrong in ("0.5", "-0.01", "NaN", "abc"):
+        assert api("PATCH", f"/api/accounts/{account_id}", {"fee_rate": wrong})["status"] == 400
+    api("PATCH", f"/api/accounts/{account_id}", {"fee_rate": None})
+    assert api("GET", "/api/overview")["accounts"][0]["fee_rate"] is None

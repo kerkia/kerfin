@@ -29,6 +29,8 @@ export interface Account {
   kind_set: boolean;
   insurer: string | null; // life insurance and PER: set by the user
   insurer_suggested: string | null; // known from the contract's name, until the user sets one
+  fee_rate: string | null; // the contract's yearly fees as a fraction: set by the user
+  fees_suggested?: ContractFees | null; // known from the contract's name, until the user sets them
   subtype: string | null;
   number: string | null;
   currency: string | null;
@@ -36,6 +38,14 @@ export interface Account {
   opening_date: string | null;
   updated_at: string;
   hidden: boolean;
+}
+
+/** A contract's published yearly management fees, as fractions (see contract_fees.py). */
+export interface ContractFees {
+  contract: string; // the contract they are known for
+  uc: string; // on units of account (funds, ETFs...)
+  euro: string | null; // on the euro fund
+  source: string; // where they are published
 }
 
 export interface Connection {
