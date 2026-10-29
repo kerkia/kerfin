@@ -55,10 +55,6 @@ export function Shell({
           <UpdateBar updater={updater} />
           <div className="shell">
             <nav className="sidebar">
-              <div className="brand">
-                <span className="brand-mark" />
-                Kerfin
-              </div>
               {(["overview", "types", "investments", "income", "insurance", "accounts", "settings"] as const).map((id) => (
                 <button
                   key={id}
