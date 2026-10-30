@@ -4,6 +4,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { initZoom } from "./zoom";
+
+initZoom();
 
 // The webview's own menu (back, reload, inspect...) has nothing to do in the app; text fields
 // keep theirs for copy and paste. Kept while developing, for the inspector.

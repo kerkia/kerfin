@@ -7,33 +7,48 @@ import { DataProvider } from "../data";
 import { engine } from "../engine";
 import { t } from "../i18n";
 import type { useUpdater } from "../updater";
+import { useZoom } from "../zoom";
 import { Accounts } from "./Accounts";
 import { AccountTypesPage } from "./AccountTypes";
 import { BudgetPage } from "./Budget";
-import { BudgetAnalysisPage } from "./BudgetAnalysis";
 import { FeesIncomePage } from "./FeesIncome";
 import { InsurancePage } from "./Insurance";
 import { InvestmentsPage } from "./Investments";
 import { OverviewPage } from "./Overview";
 import { Settings } from "./Settings";
 
-type Page = "overview" | "budget" | "analysis" | "types" | "investments" | "income" | "insurance" | "accounts" | "settings";
+type Page = "overview" | "budget" | "types" | "investments" | "income" | "insurance" | "accounts" | "settings";
 
-/** The window's top row, above the navigation and every page, while an update waits for a restart. */
-function UpdateBar({ updater }: { updater: ReturnType<typeof useUpdater> }) {
+/** The window's bottom row: an update waiting for a restart, and the zoom. */
+function StatusBar({ updater }: { updater: ReturnType<typeof useUpdater> }) {
   const { state } = updater;
-  if (state.kind !== "available" && state.kind !== "installing") return null;
+  const { zoom, zoomIn, zoomOut, reset } = useZoom();
   return (
-    <div className="update-bar" role="status">
-      <span>
-        {state.kind === "available" ? t("update.available", { version: state.version }) : t("update.installing")}
-      </span>
-      {state.kind === "available" && (
-        <button className="btn small primary" onClick={() => void updater.installNow()}>
-          {t("update.install")}
+    <footer className="status-bar">
+      <div className="status-update" role="status">
+        {(state.kind === "available" || state.kind === "installing") && (
+          <span className="update-note">
+            {state.kind === "available" ? t("update.available", { version: state.version }) : t("update.installing")}
+            {state.kind === "available" && (
+              <button className="btn small primary" onClick={() => void updater.installNow()}>
+                {t("update.install")}
+              </button>
+            )}
+          </span>
+        )}
+      </div>
+      <div className="zoom" role="group" aria-label={t("zoom.label")}>
+        <button className="zoom-button" title={t("zoom.out")} aria-label={t("zoom.out")} onClick={zoomOut}>
+          −
         </button>
-      )}
-    </div>
+        <button className="zoom-level" title={t("zoom.reset")} onClick={reset}>
+          {Math.round(zoom * 100)}%
+        </button>
+        <button className="zoom-button" title={t("zoom.in")} aria-label={t("zoom.in")} onClick={zoomIn}>
+          +
+        </button>
+      </div>
+    </footer>
   );
 }
 
@@ -54,10 +69,9 @@ export function Shell({
       <JobsProvider>
         <RefreshOnStart />
         <div className="app-frame">
-          <UpdateBar updater={updater} />
           <div className="shell">
             <nav className="sidebar">
-              {(["overview", "budget", "analysis", "types", "investments", "income", "insurance", "accounts", "settings"] as const).map((id) => (
+              {(["overview", "budget", "types", "investments", "income", "insurance", "accounts", "settings"] as const).map((id) => (
                 <button
                   key={id}
                   className={page === id ? "nav-item active" : "nav-item"}
@@ -77,7 +91,6 @@ export function Shell({
               <div className="page">
                 {page === "overview" && <OverviewPage onNavigate={setPage} />}
                 {page === "budget" && <BudgetPage />}
-                {page === "analysis" && <BudgetAnalysisPage />}
                 {page === "types" && <AccountTypesPage />}
                 {page === "investments" && <InvestmentsPage />}
                 {page === "income" && <FeesIncomePage onNavigate={setPage} />}
@@ -87,6 +100,7 @@ export function Shell({
               </div>
             </main>
           </div>
+          <StatusBar updater={updater} />
         </div>
       </JobsProvider>
     </DataProvider>

@@ -20,6 +20,17 @@ export interface Payee {
   count: number;
 }
 
+/** Categories and payees (payee keys) to keep; none given, or empty, keeps them all. */
+export interface BudgetFilter {
+  categories?: ReadonlySet<string> | null;
+  payees?: ReadonlySet<string> | null;
+}
+
+/** Whether a categorised transaction passes `filter`. */
+export function passes(tx: Categorised, filter: BudgetFilter): boolean {
+  return (!filter.categories?.size || filter.categories.has(tx.key)) && (!filter.payees?.size || filter.payees.has(tx.payeeKey));
+}
+
 export interface Budget {
   months: BudgetMonth[]; // the range's calendar months, oldest first
   full: number; // the months the range covers whole and that are over, which the averages cover
@@ -50,8 +61,8 @@ export function lastMonths(today: string, count: number): { from: string; to: st
 
 /**
  * The budget from `from` to `to` (YYYY-MM-DD, both included) as of `today`, from the
- * transactions of `accounts` (ids), categorised with the user's `rules` and `categories`.
- * The source's currency is taken as euros.
+ * transactions of `accounts` (ids), categorised with the user's `rules` and `categories`,
+ * kept to those that pass `filter`. The source's currency is taken as euros.
  */
 export function budget(
   transactions: AccountTransaction[],
@@ -60,6 +71,7 @@ export function budget(
   today: string,
   rules: Record<string, string> = {},
   categories: CategoryDef[] = DEFAULT_CATEGORIES,
+  filter: BudgetFilter = {},
 ): Budget {
   const { from, to } = range;
   const months: BudgetMonth[] = [];
@@ -78,7 +90,7 @@ export function budget(
     rules,
     categories,
   )
-    .filter((tx) => accounts.has(tx.account_id))
+    .filter((tx) => accounts.has(tx.account_id) && passes(tx, filter))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
   for (const tx of kept) {

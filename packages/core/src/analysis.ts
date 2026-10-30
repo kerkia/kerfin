@@ -4,7 +4,7 @@
 // spending categories only, refunds lowering them. Only months that are over count, so a
 // month under way doesn't read as a drop.
 import { amount } from "./analytics";
-import { addMonths } from "./budget";
+import { addMonths, passes } from "./budget";
 import { DEFAULT_CATEGORIES, categorise } from "./categories";
 import type { CategoryDef } from "./categories";
 import type { AccountTransaction } from "./types";
@@ -44,14 +44,16 @@ function monthEnd(month: string): string {
 
 /**
  * Spending a month from `range.from` to `range.to` as of `today`, over the months that are
- * complete in the range and over, for `accounts` (ids) and the spending `picked` (category
- * keys). Every account's transactions are categorised together, for transfers to find their pair.
+ * complete in the range and over, for `accounts` (ids), the spending `picked` (category
+ * keys) and, when given, `payees` (payee keys). Every account's transactions are categorised
+ * together, for transfers to find their pair.
  */
 export function spendingAnalysis(
   transactions: AccountTransaction[],
   options: {
     accounts: Set<string>;
     picked: Set<string>;
+    payees?: ReadonlySet<string> | null;
     range: { from: string; to: string };
     today: string;
     split: SplitBy;
@@ -59,7 +61,7 @@ export function spendingAnalysis(
     categories?: CategoryDef[];
   },
 ): SpendingAnalysis {
-  const { accounts, picked, range, today, split, rules = {}, categories = DEFAULT_CATEGORIES } = options;
+  const { accounts, picked, payees, range, today, split, rules = {}, categories = DEFAULT_CATEGORIES } = options;
   const months: string[] = [];
   for (let month = range.from.slice(0, 7); month <= range.to.slice(0, 7) && months.length < 600; month = addMonths(month, 1)) {
     if (`${month}-01` >= range.from && monthEnd(month) <= range.to && monthEnd(month) < today) months.push(month);
@@ -70,7 +72,7 @@ export function spendingAnalysis(
 
   const inRange = transactions.filter((tx) => index.has(tx.date.slice(0, 7)));
   for (const tx of categorise(inRange, rules, categories)) {
-    if (!accounts.has(tx.account_id) || !picked.has(tx.key)) continue;
+    if (!accounts.has(tx.account_id) || !picked.has(tx.key) || !passes(tx, { payees })) continue;
     if ((kinds.get(tx.key) ?? "spending") !== "spending") continue;
     const value = amount(tx.amount);
     // Money in that nothing categorises counts as income, as in the budget; else a refund.

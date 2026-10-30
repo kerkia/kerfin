@@ -28,6 +28,22 @@ const TRANSACTIONS = [
   tx("current", "2026-06-01", "Too old", "-5000", "Logement"),
 ];
 
+describe("budget filters", () => {
+  it("keeps the categories and payees picked", () => {
+    const range = lastMonths("2026-10-29", 3);
+    const groceries = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29", {}, undefined, {
+      categories: new Set(["groceries"]),
+    });
+    expect(groceries.transactions.map((t) => t.amount)).toEqual(["-100", "-150"]);
+    expect(groceries.income).toBe(0);
+    const rent = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29", {}, undefined, {
+      categories: new Set(),
+      payees: new Set(["rent"]),
+    });
+    expect(rent.months.map((m) => m.spending)).toEqual([900, 900, 900]);
+  });
+});
+
 describe("budget", () => {
   const result = budget(TRANSACTIONS, new Set(["current"]), lastMonths("2026-10-29", 3), "2026-10-29");
 

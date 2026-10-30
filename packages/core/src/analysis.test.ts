@@ -56,6 +56,11 @@ describe("spendingAnalysis", () => {
     expect(result.series).toEqual([{ key: "total", values: [100, 130] }]);
   });
 
+  it("keeps the payees picked, when some are", () => {
+    const result = spendingAnalysis(TRANSACTIONS, { ...options, payees: new Set(["some shop"]), split: "total" });
+    expect(result.series).toEqual([{ key: "total", values: [100, 180] }]); // the refund is another payee
+  });
+
   it("leaves out a month the range covers only in part", () => {
     const result = spendingAnalysis(TRANSACTIONS, { ...options, range: { from: "2026-08-15", to: "2026-10-29" }, split: "total" });
     expect(result.months).toEqual(["2026-09"]);

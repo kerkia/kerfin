@@ -3,20 +3,26 @@ import { useEffect, useRef, useState } from "react";
 
 import { compactMoney, longDate, money, percent, shortDate } from "../i18n";
 
-/** Props making rows pickable: clicking one selects it (a filter), clicking it again clears. */
+/**
+ * Props making rows pickable: clicking one selects it (a filter), clicking it again clears.
+ * `selected` is one key, or a set of them when several can be picked.
+ */
 interface Pickable {
-  selected?: string | null;
+  selected?: string | null | ReadonlySet<string>;
   onSelect?: (key: string) => void;
 }
 
 /** A row's props when the list is pickable: a keyboard-reachable toggle. */
 function pickProps(key: string, { selected, onSelect }: Pickable, base: string) {
   if (!onSelect) return { className: base };
-  const state = selected === key ? " selected" : selected ? " dimmed" : "";
+  const isSet = typeof selected === "object" && selected !== null;
+  const on = isSet ? selected.has(key) : selected === key;
+  const any = isSet ? selected.size > 0 : !!selected;
+  const state = on ? " selected" : any ? " dimmed" : "";
   return {
     className: `${base} pickable${state}`,
     tabIndex: 0,
-    "aria-pressed": selected === key,
+    "aria-pressed": on,
     onClick: () => onSelect(key),
     onKeyDown: (event: React.KeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") {
