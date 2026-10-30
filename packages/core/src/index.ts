@@ -5,3 +5,4 @@ export * from "./fees";
 export * from "./income";
 export * from "./budget";
 export * from "./categories";
+export * from "./analysis";

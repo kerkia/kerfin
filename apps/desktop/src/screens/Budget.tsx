@@ -7,48 +7,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
 import { ImportTransactions } from "../components/ImportFile";
+import { PRESETS, PeriodPicker, localToday, rangeOf, stored } from "../components/Period";
+import type { Preset } from "../components/Period";
 import { BarList, ColumnChart } from "../components/charts";
 import { useData } from "../data";
 import { engine } from "../engine";
 import { categoryName, longDate, money, monthName, percent, t } from "../i18n";
 
-// Ranges offered: the last months (counted with the current one), this year, last year, or dates.
-const PRESETS = ["3", "6", "12", "year", "lastYear", "custom"] as const;
-type Preset = (typeof PRESETS)[number];
 const PAGE = 100;
 const EDIT = "__edit"; // the category picker's entry that opens the category editor
 
 type SortKey = "date" | "label" | "category" | "amount";
-
-function localToday(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function stored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
-  try {
-    const value = localStorage.getItem(key) as T | null;
-    return value && allowed.includes(value) ? value : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function remember(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    // a convenience only
-  }
-}
-
-function rangeOf(preset: Preset, today: string, custom: { from: string; to: string }) {
-  const year = Number(today.slice(0, 4));
-  if (preset === "year") return { from: `${year}-01-01`, to: today };
-  if (preset === "lastYear") return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
-  if (preset === "custom") return custom;
-  return lastMonths(today, Number(preset));
-}
 
 const whole = (value: number) => money(value, "EUR", { maximumFractionDigits: 0 });
 
@@ -163,44 +132,14 @@ export function BudgetPage() {
     <div className="page-header">
       <h1>{t("nav.budget")}</h1>
       <div className="row" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <select
-          className="input compact"
-          aria-label={t("budget.period")}
-          value={preset}
-          onChange={(e) => {
-            const value = e.target.value as Preset;
-            if (value === "custom") setCustom(range);
-            setPreset(value);
-            remember("kerfin.budgetRange", value);
-          }}
-        >
-          {PRESETS.map((p) => (
-            <option key={p} value={p}>
-              {t(`budget.range.${p}`, { n: p })}
-            </option>
-          ))}
-        </select>
-        {preset === "custom" && (
-          <>
-            <input
-              type="date"
-              className="input compact"
-              aria-label={t("budget.from")}
-              value={custom.from}
-              max={custom.to}
-              onChange={(e) => e.target.value && setCustom((c) => ({ ...c, from: e.target.value }))}
-            />
-            <span className="muted">–</span>
-            <input
-              type="date"
-              className="input compact"
-              aria-label={t("budget.to")}
-              value={custom.to}
-              min={custom.from}
-              onChange={(e) => e.target.value && setCustom((c) => ({ ...c, to: e.target.value }))}
-            />
-          </>
-        )}
+        <PeriodPicker
+          preset={preset}
+          custom={custom}
+          range={range}
+          storageKey="kerfin.budgetRange"
+          onPreset={setPreset}
+          onCustom={setCustom}
+        />
         {editButton}
       </div>
     </div>

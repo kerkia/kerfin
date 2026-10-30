@@ -703,6 +703,25 @@ table.table {
   gap: 8px;
   min-width: 0;
 }
+.check-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.check-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
 .swatch {
   width: 10px;
   height: 10px;

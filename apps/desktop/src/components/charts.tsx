@@ -291,6 +291,184 @@ export function ColumnChart({
   );
 }
 
+export interface TrendSeries {
+  key: string;
+  label: string;
+  color: string; // a CSS color, e.g. var(--series-1)
+  values: number[]; // one per month
+}
+
+const TREND_HEIGHT = 260;
+const TREND_PAD = { top: 14, right: 16, bottom: 26, left: 56 };
+
+/**
+ * Lines over months, on a zero baseline, with a crosshair and a tooltip per month. With
+ * `trend`, a dashed trend line runs through the months and on over `ahead` (months to come),
+ * where a band shows the range the months fell in around the trend.
+ */
+export function TrendChart({
+  months,
+  ahead = [],
+  series,
+  trend,
+  label,
+  title,
+}: {
+  months: string[];
+  ahead?: string[];
+  series: TrendSeries[];
+  trend?: { values: number[]; band: number; label: string; projectionLabel: string }; // values: months, then ahead
+  label: (month: string) => string; // under the axis
+  title: (month: string) => string; // in the tooltip
+}) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(600);
+  const [hovered, setHover] = useState<number | null>(null);
+
+  useEffect(() => {
+    const element = wrap.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry!.contentRect.width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const all = [...months, ...ahead];
+  const count = all.length;
+  // A month hovered may be gone when the months change.
+  const hover = hovered !== null && hovered < count ? hovered : null;
+  const highs = [...series.flatMap((s) => s.values), ...(trend ? trend.values.map((v) => v + trend.band) : [])];
+  const ticks = niceTicks(0, Math.max(...highs, 1));
+  const yMax = ticks[ticks.length - 1]!;
+  const innerW = Math.max(width - TREND_PAD.left - TREND_PAD.right, 10);
+  const innerH = TREND_HEIGHT - TREND_PAD.top - TREND_PAD.bottom;
+  const x = (i: number) => TREND_PAD.left + (count > 1 ? (i / (count - 1)) * innerW : innerW / 2);
+  const y = (value: number) => TREND_PAD.top + innerH - (Math.max(value, 0) / yMax) * innerH;
+  const path = (values: number[], offset = 0) => values.map((v, i) => `${i ? "L" : "M"}${x(i + offset)},${y(v)}`).join("");
+  // About eight month names fit under the axis.
+  const step = Math.max(1, Math.ceil(count / Math.max(Math.floor(innerW / 64), 2)));
+  const last = months.length - 1;
+
+  let band = "";
+  if (trend && ahead.length) {
+    const from = last; // the band opens from the last month that is over
+    const upper = trend.values.slice(from).map((v, i) => `${i ? "L" : "M"}${x(from + i)},${y(v + (i ? trend.band : 0))}`);
+    const lower = trend.values
+      .slice(from)
+      .map((v, i) => [x(from + i), y(v - (i ? trend.band : 0))] as const)
+      .reverse()
+      .map(([px, py]) => `L${px},${py}`);
+    band = `${upper.join("")}${lower.join("")}Z`;
+  }
+
+  function onMove(event: React.MouseEvent<SVGSVGElement>) {
+    const px = event.clientX - event.currentTarget.getBoundingClientRect().left;
+    const i = count > 1 ? Math.round(((px - TREND_PAD.left) / innerW) * (count - 1)) : 0;
+    setHover(Math.min(Math.max(i, 0), count - 1));
+  }
+
+  const projected = hover !== null && hover > last;
+  const trendValue = hover !== null && trend ? Math.max(trend.values[hover] ?? 0, 0) : null;
+
+  return (
+    <div className="chart-wrap" ref={wrap}>
+      <svg
+        className="chart-svg"
+        width={width}
+        height={TREND_HEIGHT}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+        role="img"
+        aria-label={series
+          .map((s) => `${s.label}: ${s.values.map((v, i) => `${title(months[i]!)} ${money(v)}`).join(", ")}`)
+          .join("; ")}
+      >
+        {ticks.map((tick) => (
+          <g key={tick}>
+            <line x1={TREND_PAD.left} x2={width - TREND_PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
+            <text x={TREND_PAD.left - 8} y={y(tick) + 4} textAnchor="end">
+              {compactMoney(tick)}
+            </text>
+          </g>
+        ))}
+        {all.map((month, i) =>
+          i % step === 0 || i === count - 1 ? (
+            <text
+              key={month}
+              x={x(i)}
+              y={TREND_HEIGHT - 6}
+              textAnchor={count > 1 && i === 0 ? "start" : count > 1 && i === count - 1 ? "end" : "middle"}
+            >
+              {label(month)}
+            </text>
+          ) : null,
+        )}
+        {ahead.length > 0 && (
+          <>
+            <rect x={x(last)} y={TREND_PAD.top} width={x(count - 1) - x(last)} height={innerH} fill="var(--grid)" opacity={0.35} />
+            <text x={x(last) + 6} y={TREND_PAD.top + 12}>
+              {trend?.projectionLabel}
+            </text>
+          </>
+        )}
+        {band && <path d={band} fill="var(--text-2)" opacity={0.12} />}
+        {trend && (
+          <path d={path(trend.values)} fill="none" stroke="var(--text-2)" strokeWidth={1.5} strokeDasharray="5 4" />
+        )}
+        {series.map((s) => (
+          <path
+            key={s.key}
+            d={path(s.values)}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ))}
+        {hover !== null && (
+          <line x1={x(hover)} x2={x(hover)} y1={TREND_PAD.top} y2={TREND_PAD.top + innerH} stroke="var(--axis)" />
+        )}
+        {hover !== null &&
+          !projected &&
+          series.map((s) => (
+            <circle key={s.key} cx={x(hover)} cy={y(s.values[hover]!)} r={4} fill={s.color} stroke="var(--surface)" strokeWidth={2} />
+          ))}
+        {projected && trendValue !== null && (
+          <circle cx={x(hover)} cy={y(trendValue)} r={4} fill="var(--text-2)" stroke="var(--surface)" strokeWidth={2} />
+        )}
+      </svg>
+      {hover !== null && (
+        <div className="tooltip" style={{ left: Math.min(x(hover) + 12, width - 220), top: TREND_PAD.top }}>
+          <div className="muted">{title(all[hover]!)}</div>
+          {!projected &&
+            series.map((s) => (
+              <div key={s.key} className="legend-name">
+                <span className="swatch" style={{ background: s.color }} aria-hidden />
+                <span>{s.label}</span>
+                <span className="num" style={{ marginLeft: "auto", paddingLeft: 12 }}>
+                  {money(s.values[hover]!, "EUR", { maximumFractionDigits: 0 })}
+                </span>
+              </div>
+            ))}
+          {trend && trendValue !== null && (
+            <div className="muted">
+              {projected ? trend.projectionLabel : trend.label}{" "}
+              <span className="num">{money(trendValue, "EUR", { maximumFractionDigits: 0 })}</span>
+              {projected &&
+                ` (${money(Math.max(trendValue - trend.band, 0), "EUR", { maximumFractionDigits: 0 })} – ${money(
+                  trendValue + trend.band,
+                  "EUR",
+                  { maximumFractionDigits: 0 },
+                )})`}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface DonutSlice {
   key: string;
   label: string;
