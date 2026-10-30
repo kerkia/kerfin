@@ -29,18 +29,26 @@ const TRANSACTIONS = [
 ];
 
 describe("budget filters", () => {
-  it("keeps the categories and payees picked", () => {
-    const range = lastMonths("2026-10-29", 3);
-    const groceries = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29", {}, undefined, {
-      categories: new Set(["groceries"]),
+  const range = lastMonths("2026-10-29", 3);
+
+  it("leaves out the categories and payees left out", () => {
+    const noHousing = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29", {}, undefined, {
+      categoriesOut: new Set(["housing", "income"]),
     });
-    expect(groceries.transactions.map((t) => t.amount)).toEqual(["-100", "-150"]);
-    expect(groceries.income).toBe(0);
-    const rent = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29", {}, undefined, {
-      categories: new Set(),
-      payees: new Set(["rent"]),
+    expect(noHousing.transactions.map((t) => t.amount)).toEqual(["-100", "-50", "-150"]) // newest first;
+    expect(noHousing.income).toBe(0);
+    const noShop = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29", {}, undefined, {
+      payeesOut: new Set(["some shop", "mystery"]),
     });
-    expect(rent.months.map((m) => m.spending)).toEqual([900, 900, 900]);
+    expect(noShop.months.map((m) => m.spending)).toEqual([900, 900, 900]);
+  });
+
+  it("adds up money in and out by account, category and payee, transfers included", () => {
+    const result = budget(TRANSACTIONS, new Set(["current"]), range, "2026-10-29");
+    expect(result.flows.accounts["current"]).toEqual({ count: 8, in: 6000, out: 3000 });
+    expect(result.flows.categories["housing"]).toEqual({ count: 3, in: 0, out: 2700 });
+    expect(result.flows.payees["salary"]).toEqual({ count: 2, in: 6000, out: 0 });
+    expect(result.payeeNames["some shop"]).toBe("Some Shop");
   });
 });
 

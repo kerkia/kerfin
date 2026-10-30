@@ -20,15 +20,22 @@ export interface Payee {
   count: number;
 }
 
-/** Categories and payees (payee keys) to keep; none given, or empty, keeps them all. */
+/** Categories and payees (payee keys) left out. */
 export interface BudgetFilter {
-  categories?: ReadonlySet<string> | null;
-  payees?: ReadonlySet<string> | null;
+  categoriesOut?: ReadonlySet<string> | null;
+  payeesOut?: ReadonlySet<string> | null;
 }
 
 /** Whether a categorised transaction passes `filter`. */
 export function passes(tx: Categorised, filter: BudgetFilter): boolean {
-  return (!filter.categories?.size || filter.categories.has(tx.key)) && (!filter.payees?.size || filter.payees.has(tx.payeeKey));
+  return !filter.categoriesOut?.has(tx.key) && !filter.payeesOut?.has(tx.payeeKey);
+}
+
+/** Money in and out as the bank lists it, whatever the category: transfers included. */
+export interface Flow {
+  count: number;
+  in: number;
+  out: number; // a positive amount
 }
 
 export interface Budget {
@@ -40,6 +47,8 @@ export interface Budget {
   payees: Payee[]; // largest spending first
   transactions: Categorised[]; // over the range, newest first
   byAccount: Record<string, { income: number; spending: number; count: number }>; // over the range
+  flows: { accounts: Record<string, Flow>; categories: Record<string, Flow>; payees: Record<string, Flow> };
+  payeeNames: Record<string, string>; // by payee key, as the latest transaction names it
 }
 
 /** The month `n` months after `month` (YYYY-MM); `n` may be negative. */
@@ -83,6 +92,14 @@ export function budget(
   const totals = new Map<string, number>();
   const payees = new Map<string, Payee>();
   const byAccount: Budget["byAccount"] = {};
+  const flows: Budget["flows"] = { accounts: {}, categories: {}, payees: {} };
+  const payeeNames: Record<string, string> = {};
+  const flow = (into: Record<string, Flow>, key: string, value: number) => {
+    const entry = (into[key] ??= { count: 0, in: 0, out: 0 });
+    entry.count += 1;
+    if (value > 0) entry.in += value;
+    else entry.out -= value;
+  };
 
   // Every account's transactions are categorised together, for transfers to find their pair.
   const kept = categorise(
@@ -99,6 +116,10 @@ export function budget(
     const entry = byMonth.get(tx.date.slice(0, 7))!;
     const account = (byAccount[tx.account_id] ??= { income: 0, spending: 0, count: 0 });
     account.count += 1;
+    flow(flows.accounts, tx.account_id, value);
+    flow(flows.categories, tx.key, value);
+    flow(flows.payees, tx.payeeKey, value);
+    payeeNames[tx.payeeKey] ??= tx.payee || tx.label; // newest first: the latest name
     if (kind === "excluded") continue;
     if (kind === "income" || (value > 0 && tx.origin === "none")) {
       // Income, or money in that nothing categorises (else a refund).
@@ -136,5 +157,7 @@ export function budget(
     payees: [...payees.values()].sort((a, b) => b.spending - a.spending),
     transactions: kept,
     byAccount,
+    flows,
+    payeeNames,
   };
 }

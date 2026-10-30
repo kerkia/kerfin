@@ -160,7 +160,8 @@ goes where is remembered by account number; its transactions replace the
 account's over the days the file covers, so overlapping imports never double them, and an
 account entered by hand takes the file's balance.
 
-The Budget page filters by accounts, categories and payees, each list showing its figures
+The Budget page filters by accounts, categories and payees (tables whose unticked rows are
+left out), each table showing its figures
 for what the other two keep (`budget()` takes the filter). Income and savings follow the
 accounts only. Its analysis (`packages/core/src/analysis.ts`) charts spending a month, as a
 total or by category or account, over the period's complete months only. Each line gets its

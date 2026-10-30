@@ -14,14 +14,14 @@ import {
   trendStats,
   withRequired,
 } from "@kerfin/core";
-import type { AccountTransaction, Categorised, CategoryDef, SplitBy, TransactionsNotice, TrendStats } from "@kerfin/core";
+import type { AccountTransaction, Categorised, CategoryDef, Flow, SplitBy, TransactionsNotice, TrendStats } from "@kerfin/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
 import { ImportTransactions } from "../components/ImportFile";
 import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored } from "../components/Period";
 import type { Preset } from "../components/Period";
-import { BarList, TrendChart } from "../components/charts";
+import { TrendChart } from "../components/charts";
 import type { TrendSeries } from "../components/charts";
 import { useData } from "../data";
 import { engine } from "../engine";
@@ -29,7 +29,6 @@ import { categoryName, longDate, money, monthName, percent, t } from "../i18n";
 
 const PAGE = 100;
 const EDIT = "__edit"; // the category picker's entry that opens the category editor
-const PAYEES = 25; // payees listed, besides those picked
 const SPLITS = ["total", "category", "account"] as const;
 const AHEAD = ["3", "6", "12"] as const;
 const COLORS = 6; // named lines; the rest fold into "Other"
@@ -37,6 +36,8 @@ const OTHER = "__other";
 const MIN_MONTHS = 3; // for a trend worth showing
 
 type SortKey = "date" | "label" | "account" | "category" | "amount";
+type FlowKey = "name" | "count" | "in" | "out";
+type Sort<K> = { key: K; descending: boolean };
 
 const whole = (value: number) => money(value, "EUR", { maximumFractionDigits: 0 });
 // A trend's monthly change: in cents while small, for a slow trend not to read as none.
@@ -60,12 +61,11 @@ export function BudgetPage() {
   const [editing, setEditing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
-  const [pickedCategories, setPickedCategories] = useState<Set<string>>(new Set());
-  const [pickedPayees, setPickedPayees] = useState<Set<string>>(new Set());
+  const [categoriesOut, setCategoriesOut] = useState<Set<string>>(new Set());
+  const [payeesOut, setPayeesOut] = useState<Set<string>>(new Set());
   const [preset, setPreset] = useState<Preset>(() => stored("kerfin.budgetRange", PRESETS, "12"));
   const today = localToday();
   const [custom, setCustom] = useState(() => lastMonths(today, 3));
-  const [payeesBy, setPayeesBy] = useState<"amount" | "count">("amount");
   const [split, setSplit] = useState<SplitBy>(() => stored("kerfin.budgetSplit", SPLITS, "total"));
   const [ahead, setAhead] = useState(() => stored("kerfin.budgetAhead", AHEAD, "6"));
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "date", descending: true });
@@ -114,14 +114,14 @@ export function BudgetPage() {
     const spending = categories.filter((c) => c.kind === "spending").map((c) => c.key);
     return {
       base: run(picked), // income and savings: the accounts' own
-      main: run(picked, { categories: pickedCategories, payees: pickedPayees }),
-      forAccounts: run(all, { categories: pickedCategories, payees: pickedPayees }),
-      forCategories: run(picked, { payees: pickedPayees }),
-      forPayees: run(picked, { categories: pickedCategories }),
+      main: run(picked, { categoriesOut, payeesOut }),
+      forAccounts: run(all, { categoriesOut, payeesOut }),
+      forCategories: run(picked, { payeesOut }),
+      forPayees: run(picked, { categoriesOut }),
       analysis: spendingAnalysis(transactions, {
         accounts: picked,
-        picked: new Set(pickedCategories.size ? spending.filter((key) => pickedCategories.has(key)) : spending),
-        payees: pickedPayees,
+        picked: new Set(spending.filter((key) => !categoriesOut.has(key))),
+        payeesOut,
         range,
         today,
         split,
@@ -130,7 +130,7 @@ export function BudgetPage() {
       }),
     };
     // The range by its dates: rangeOf gives a new object each render.
-  }, [transactions, accounts, unselected, pickedCategories, pickedPayees, range.from, range.to, today, rules, categories, split, validRange]);
+  }, [transactions, accounts, unselected, categoriesOut, payeesOut, range.from, range.to, today, rules, categories, split, validRange]);
 
   const dialogs = (
     <>
@@ -225,18 +225,7 @@ export function BudgetPage() {
   const saved = base.income - base.spending;
   const totalSpent = main.months.reduce((sum, m) => sum + m.spending, 0);
   const averageHelp = main.full ? t("budget.averageOver", { n: main.full }) : t("budget.averagePartial");
-  const filtered = pickedCategories.size > 0 || pickedPayees.size > 0;
-
-  // The lists: payees by amount or number, the largest first, with those picked kept in.
-  const payeeTotal = forPayees.payees.reduce((sum, p) => sum + (payeesBy === "count" ? p.count : p.spending), 0);
-  const payeeSlices = [...forPayees.payees]
-    .sort((a, b) => (payeesBy === "count" ? b.count - a.count || b.spending - a.spending : b.spending - a.spending))
-    .filter((p, i) => i < PAYEES || pickedPayees.has(p.key))
-    .map((p) => {
-      const value = payeesBy === "count" ? p.count : p.spending;
-      return { key: p.key, value, share: payeeTotal ? value / payeeTotal : 0 };
-    });
-  const payeeNames = new Map([...forPayees.payees, ...main.payees].map((p) => [p.key, p.label]));
+  const filtered = categoriesOut.size > 0 || payeesOut.size > 0;
 
   // The chart's lines: the largest named, in the list's order so a line keeps its color as
   // others come and go; the rest added up as "Other".
@@ -300,128 +289,58 @@ export function BudgetPage() {
     );
   }
 
-  const allSelected = unselected.size === 0;
-  const pick = (set: typeof setPickedCategories, key: string) => {
-    set((picked) => toggled(picked, key));
-    setShown(PAGE);
-  };
-  const clear = (set: typeof setPickedCategories) => (
-    <button className="btn small ghost" onClick={() => set(new Set())}>
-      {t("budget.clearPicked")}
-    </button>
-  );
-
   return (
     <>
       {header}
       {dialogs}
 
       <div className="budget-filters">
-        <section className="card">
-          <div className="card-header">
-            <h2>{t("budget.accounts")}</h2>
-          </div>
-          <div className="filter-scroll">
-            <table className="table portfolio dense">
-              <thead>
-                <tr>
-                  <th style={{ width: 28 }}>
-                    <input
-                      type="checkbox"
-                      aria-label={t("budget.allAccounts")}
-                      checked={allSelected}
-                      ref={(box) => {
-                        if (box) box.indeterminate = !allSelected && unselected.size < accounts.length;
-                      }}
-                      onChange={() => setUnselected(allSelected ? new Set(accounts.map((a) => a.id)) : new Set())}
-                    />
-                  </th>
-                  <th>{t("budget.account")}</th>
-                  <th className="right">{t("budget.count")}</th>
-                  <th className="right">{t("budget.in")}</th>
-                  <th className="right">{t("budget.out")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accounts.map((a) => {
-                  const totals = forAccounts.byAccount[a.id];
-                  const toggle = () => setUnselected((off) => toggled(off, a.id));
-                  return (
-                    <tr key={a.id} className={unselected.has(a.id) ? "clickable dimmed-row" : "clickable"} onClick={toggle}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={a.label}
-                          checked={!unselected.has(a.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={toggle}
-                        />
-                      </td>
-                      <td>
-                        {a.label}
-                        <span className="muted small"> · {a.institution_name}</span>
-                      </td>
-                      <td className="right num">{totals?.count ?? 0}</td>
-                      <td className="right num">{whole(totals?.income ?? 0)}</td>
-                      <td className="right num">{whole(totals?.spending ?? 0)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="card-header">
-            <h2>{t("budget.byCategory")}</h2>
-            <div className="row">
-              {pickedCategories.size > 0 && clear(setPickedCategories)}
-              <button className="btn small ghost" onClick={() => setEditing(true)}>
-                {t("budget.edit")}
-              </button>
-            </div>
-          </div>
-          <div className="filter-scroll">
-            <BarList
-              slices={forCategories.categories}
-              label={nameOf}
-              selected={pickedCategories}
-              onSelect={(key) => pick(setPickedCategories, key)}
-            />
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="card-header">
-            <h2>{t("budget.payees")}</h2>
-            <div className="row">
-              {pickedPayees.size > 0 && clear(setPickedPayees)}
-              <div className="segmented" role="radiogroup" aria-label={t("budget.payeesBy")}>
-                {(["amount", "count"] as const).map((by) => (
-                  <button
-                    key={by}
-                    role="radio"
-                    aria-checked={payeesBy === by}
-                    className={payeesBy === by ? "segment active" : "segment"}
-                    onClick={() => setPayeesBy(by)}
-                  >
-                    {t(`budget.payeesBy.${by}`)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="filter-scroll">
-            <BarList
-              slices={payeeSlices}
-              label={(key) => payeeNames.get(key) ?? key}
-              format={payeesBy === "count" ? (n) => t("budget.payments", { n }) : undefined}
-              selected={pickedPayees}
-              onSelect={(key) => pick(setPickedPayees, key)}
-            />
-          </div>
-        </section>
+        <FilterTable
+          title={t("budget.accounts")}
+          nameHeader={t("budget.account")}
+          allLabel={t("budget.allAccounts")}
+          rows={accounts.map((a) => ({
+            key: a.id,
+            name: a.label,
+            detail: a.institution_name,
+            flow: forAccounts.flows.accounts[a.id] ?? NO_FLOW,
+          }))}
+          out={unselected}
+          onOut={setUnselected}
+        />
+        <FilterTable
+          title={t("budget.category")}
+          nameHeader={t("budget.category")}
+          allLabel={t("budget.allCategories")}
+          rows={categories
+            .filter((c) => forCategories.flows.categories[c.key])
+            .map((c) => ({ key: c.key, name: categoryName(c), flow: forCategories.flows.categories[c.key]! }))}
+          out={categoriesOut}
+          onOut={(out) => {
+            setCategoriesOut(out);
+            setShown(PAGE);
+          }}
+          action={
+            <button className="btn small ghost" onClick={() => setEditing(true)}>
+              {t("budget.edit")}
+            </button>
+          }
+        />
+        <FilterTable
+          title={t("budget.payee")}
+          nameHeader={t("budget.payee")}
+          allLabel={t("budget.allPayees")}
+          rows={Object.entries(forPayees.flows.payees).map(([key, flow]) => ({
+            key,
+            name: forPayees.payeeNames[key] ?? key,
+            flow,
+          }))}
+          out={payeesOut}
+          onOut={(out) => {
+            setPayeesOut(out);
+            setShown(PAGE);
+          }}
+        />
       </div>
       <p className="muted small" style={{ margin: "-8px 0 0" }}>
         {t("budget.filtersHelp")}
@@ -645,6 +564,127 @@ export function BudgetPage() {
         </p>
       </section>
     </>
+  );
+}
+
+const NO_FLOW: Flow = { count: 0, in: 0, out: 0 };
+
+/**
+ * A filter as a table: a row per account, category or payee with its money in and out,
+ * ticked to keep it; the header's box ticks or unticks every row. Sortable by any column.
+ */
+function FilterTable({
+  title,
+  nameHeader,
+  allLabel,
+  rows,
+  out,
+  onOut,
+  action,
+}: {
+  title: string;
+  nameHeader: string;
+  allLabel: string;
+  rows: { key: string; name: string; detail?: string | null; flow: Flow }[];
+  out: ReadonlySet<string>; // the rows left out
+  onOut: (out: Set<string>) => void;
+  action?: React.ReactNode;
+}) {
+  const [sort, setSort] = useState<Sort<FlowKey>>({ key: "out", descending: true });
+  type Row = (typeof rows)[number];
+  const compare: Record<FlowKey, (a: Row, b: Row) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    count: (a, b) => a.flow.count - b.flow.count,
+    in: (a, b) => a.flow.in - b.flow.in,
+    out: (a, b) => a.flow.out - b.flow.out,
+  };
+  const sorted = [...rows].sort((a, b) => compare[sort.key](a, b) * (sort.descending ? -1 : 1) || a.name.localeCompare(b.name));
+  const maxOut = Math.max(...rows.map((r) => r.flow.out), 1);
+  const kept = rows.filter((r) => !out.has(r.key)).length;
+  const all = kept === rows.length;
+
+  function head(key: FlowKey, label: string, className: string, title?: string) {
+    const active = sort.key === key;
+    return (
+      <th className={className} title={title} aria-sort={active ? (sort.descending ? "descending" : "ascending") : "none"}>
+        <button className="sort-button" onClick={() => setSort({ key, descending: active ? !sort.descending : key !== "name" })}>
+          {label}
+          <span aria-hidden className={active ? "sort-mark" : "sort-mark idle"}>
+            {active && !sort.descending ? "↑" : "↓"}
+          </span>
+        </button>
+      </th>
+    );
+  }
+
+  return (
+    <section className="card">
+      <div className="card-header">
+        <h2>{title}</h2>
+        {action}
+      </div>
+      <div className="filter-scroll">
+        <table className="table portfolio dense sticky-head">
+          <thead>
+            <tr>
+              <th className="col-check">
+                <input
+                  type="checkbox"
+                  aria-label={allLabel}
+                  checked={all && rows.length > 0}
+                  ref={(box) => {
+                    if (box) box.indeterminate = !all && kept > 0;
+                  }}
+                  onChange={() => {
+                    const next = new Set(out);
+                    for (const row of rows) {
+                      if (all) next.add(row.key);
+                      else next.delete(row.key);
+                    }
+                    onOut(next);
+                  }}
+                />
+              </th>
+              {head("name", nameHeader, "")}
+              {head("count", t("budget.countShort"), "right col-count", t("budget.count"))}
+              {head("in", t("budget.in"), "right col-money")}
+              {head("out", t("budget.out"), "right col-money")}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
+              const left = out.has(row.key);
+              const toggle = () => onOut(toggled(out, row.key));
+              return (
+                <tr key={row.key} className={left ? "clickable dimmed-row" : "clickable"} onClick={toggle}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={row.name}
+                      checked={!left}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={toggle}
+                    />
+                  </td>
+                  <td className="filter-name" title={row.name}>
+                    {row.name}
+                    {row.detail && <span className="muted small"> · {row.detail}</span>}
+                  </td>
+                  <td className="right num">{row.flow.count}</td>
+                  <td className="right num">{row.flow.in ? whole(row.flow.in) : ""}</td>
+                  <td
+                    className="right num share-cell"
+                    style={{ "--share": `${(row.flow.out / maxOut) * 100}%` } as React.CSSProperties}
+                  >
+                    {row.flow.out ? whole(row.flow.out) : ""}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

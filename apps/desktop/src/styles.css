@@ -1130,7 +1130,7 @@ th:hover .sort-mark.idle {
 }
 .budget-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   align-items: stretch;
 }
@@ -1182,4 +1182,31 @@ th:hover .sort-mark.idle {
 }
 .nowrap {
   white-space: nowrap;
+}
+.budget-filters .table {
+  table-layout: fixed;
+}
+.budget-filters .table .col-check {
+  width: 28px;
+}
+.budget-filters .table .col-count {
+  width: 44px;
+}
+.budget-filters .table .col-money {
+  width: 80px;
+}
+.filter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A cell's share of the largest, as a wash behind it */
+.share-cell {
+  background: linear-gradient(to left, var(--accent-wash) var(--share), transparent var(--share));
+}
+.sticky-head thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
 }
