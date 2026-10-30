@@ -530,8 +530,10 @@ def _export(body: dict[str, Any]) -> list[bank_export.ExportAccount]:
 
 @route("POST", "/api/imports/preview")
 def preview_import(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
-    """The accounts in a bank's export, each with the account it would go to."""
+    """The accounts in a bank's export, each with the account it would go to and, for each
+    account that has transactions, how many of the file's come after its latest."""
     store, _sync = app.unlocked()
+    latest = store.latest_transactions()
     found = []
     for account in _export(body):
         amounts = [t.amount for t in account.transactions]
@@ -548,9 +550,13 @@ def preview_import(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
                 "target": bank_export.target(store, account),
                 "kind": bank_export.kind(account),
                 "institution": bank_export.institution(account),
+                "newer": {
+                    account_id: sum(1 for t in account.transactions if t.date.isoformat() > day)
+                    for account_id, day in latest.items()
+                },
             }
         )
-    return {"accounts": found}
+    return {"accounts": found, "latest": latest}
 
 
 @route("POST", "/api/imports")

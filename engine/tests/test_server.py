@@ -157,6 +157,13 @@ def test_a_bank_export_is_previewed_then_imported(api: Any) -> None:
     assert api("GET", "/api/overview")["accounts"][0]["institution_name"] == "Other Bank"
     answer = api("GET", "/api/transactions")
     assert [t["payee"] for t in answer["transactions"]] == ["Some Grocer", "Employer"]
+    # Previewed again, the file goes to the same account and adds nothing newer.
+    again = api("POST", "/api/imports/preview", {"data": data})
+    assert again["latest"] == {created["id"]: max(t["date"] for t in answer["transactions"])}
+    assert (again["accounts"][0]["target"], again["accounts"][0]["newer"]) == (
+        created["id"],
+        {created["id"]: 0},
+    )
 
     api("PUT", "/api/category-rules", {"payee_key": "some grocer", "category": "groceries"})
     assert api("GET", "/api/transactions")["rules"] == {"some grocer": "groceries"}

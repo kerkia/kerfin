@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AccountEditor } from "../components/AccountEditor";
 import { AddAccount, ConnectForm } from "../components/AddAccount";
 import { FinaryConnect } from "../components/FinaryConnect";
+import { ImportTransactions } from "../components/ImportFile";
 import { SyncWarnings, syncReason } from "../components/SyncWarnings";
 import { useJobs, useMinuteTick } from "../components/Jobs";
 import { Dialog } from "../components/ui";
@@ -16,6 +17,7 @@ export function Accounts() {
   const { overview, institutions, institutionName, refresh } = useData();
   const { track } = useJobs();
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<Connection | null>(null);
   // The account whose details are open, below it.
   const [open, setOpen] = useState<string | null>(null);
@@ -53,6 +55,9 @@ export function Accounts() {
               {t("accounts.syncAll")}
             </button>
           )}
+          <button className="btn" onClick={() => setImporting(true)}>
+            {t("import.updateButton")}
+          </button>
           <button className="btn primary" onClick={() => setAdding(true)}>
             {t("accounts.add")}
           </button>
@@ -122,6 +127,7 @@ export function Accounts() {
       ))}
 
       <AddAccount open={adding} onClose={() => setAdding(false)} />
+      <ImportTransactions open={importing} onClose={() => setImporting(false)} />
       <Dialog open={!!editing} onClose={() => setEditing(null)}>
         {editing && editing.institution === "finary" && (
           <FinaryConnect connectionId={editing.id} onBack={() => setEditing(null)} onDone={() => setEditing(null)} />

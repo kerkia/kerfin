@@ -6,6 +6,7 @@ import type { AccountTransaction, Categorised, CategoryDef, TransactionsNotice }
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
+import { ImportTransactions } from "../components/ImportFile";
 import { BarList, ColumnChart } from "../components/charts";
 import { useData } from "../data";
 import { engine } from "../engine";
@@ -58,6 +59,7 @@ export function BudgetPage() {
   const [rules, setRules] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<CategoryDef[]>(DEFAULT_CATEGORIES);
   const [editing, setEditing] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
   const [preset, setPreset] = useState<Preset>(() => stored("kerfin.budgetRange", PRESETS, "12"));
   const today = localToday();
@@ -113,12 +115,20 @@ export function BudgetPage() {
   }, [transactions, accounts, unselected, range.from, range.to, today, rules, categories, validRange]);
 
   const dialogs = (
-    <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />
+    <>
+      <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />
+      <ImportTransactions open={importing} onClose={() => setImporting(false)} />
+    </>
   );
   const editButton = (
-    <button className="btn small" onClick={() => setEditing(true)}>
-      {t("budget.editCategories")}
-    </button>
+    <>
+      <button className="btn small" onClick={() => setImporting(true)}>
+        {t("import.updateButton")}
+      </button>
+      <button className="btn small" onClick={() => setEditing(true)}>
+        {t("budget.editCategories")}
+      </button>
+    </>
   );
 
   if (!overview || !transactions) return <h1>{t("nav.budget")}</h1>;

@@ -689,6 +689,13 @@ class Store:
             row["pending"] = bool(row["pending"])
         return rows
 
+    def latest_transactions(self) -> dict[str, str]:
+        """Each account's latest transaction date, for accounts that have any."""
+        return {
+            row["account_id"]: row["d"]
+            for row in self._rows("SELECT account_id, MAX(date) AS d FROM transactions GROUP BY account_id")
+        }
+
     def transactions_notices(self) -> list[dict[str, str]]:
         """What sources said when they listed no transactions, by connection."""
         notices = []

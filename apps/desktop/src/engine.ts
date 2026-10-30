@@ -98,7 +98,8 @@ export const engine = {
   setCategoryRule: (payee_key: string, category: string | null) =>
     call<object>("PUT", "/api/category-rules", { payee_key, category }),
   setCategories: (categories: CategoryDef[]) => call<object>("PUT", "/api/categories", { categories }),
-  previewImport: (data: string) => call<{ accounts: ImportAccount[] }>("POST", "/api/imports/preview", { data }),
+  previewImport: (data: string) =>
+    call<{ accounts: ImportAccount[]; latest: Record<string, string> }>("POST", "/api/imports/preview", { data }),
   importExport: (
     data: string,
     targets: Record<string, string>,
