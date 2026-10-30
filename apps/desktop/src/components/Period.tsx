@@ -1,10 +1,11 @@
 // The period a budget page covers: the last months (counted with the current one), this year,
-// last year, or dates the user picks. Each page remembers its own choice.
+// last year, all the transactions, or dates the user picks. Each page remembers its own choice.
 import { lastMonths } from "@kerfin/core";
+import { useEffect, useState } from "react";
 
 import { t } from "../i18n";
 
-export const PRESETS = ["3", "6", "12", "year", "lastYear", "custom"] as const;
+export const PRESETS = ["3", "6", "12", "year", "lastYear", "all", "custom"] as const;
 export type Preset = (typeof PRESETS)[number];
 export type Range = { from: string; to: string };
 
@@ -30,12 +31,40 @@ export function remember(key: string, value: string) {
   }
 }
 
-export function rangeOf(preset: Preset, today: string, custom: Range): Range {
+/** The period's dates; "all" starts with `first`, the earliest transaction's date. */
+export function rangeOf(preset: Preset, today: string, custom: Range, first?: string | null): Range {
   const year = Number(today.slice(0, 4));
   if (preset === "year") return { from: `${year}-01-01`, to: today };
   if (preset === "lastYear") return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
+  if (preset === "all") return first && first < today ? { from: first.slice(0, 10), to: today } : lastMonths(today, 12);
   if (preset === "custom") return custom;
   return lastMonths(today, Number(preset));
+}
+
+/**
+ * A date field that passes on whole dates only: typing a year goes through 0002, 0020 and
+ * 0201 on its way to 2014, which are kept in the field and not passed on.
+ */
+function DateField({ value, label, min, max, onChange }: { value: string; label: string; min?: string; max?: string; onChange: (value: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      type="date"
+      className="input compact"
+      aria-label={label}
+      value={draft}
+      min={min}
+      max={max}
+      onChange={(e) => {
+        const next = e.target.value;
+        setDraft(next);
+        const year = Number(next.slice(0, 4));
+        if (/^\d{4}-\d{2}-\d{2}$/.test(next) && year >= 1900 && year <= 2200) onChange(next);
+      }}
+      onBlur={() => setDraft(value)}
+    />
+  );
 }
 
 /** The period select, with start and end dates when the user picks dates. */
@@ -75,23 +104,14 @@ export function PeriodPicker({
       </select>
       {preset === "custom" && (
         <>
-          <input
-            type="date"
-            className="input compact"
-            aria-label={t("budget.from")}
+          <DateField
+            label={t("budget.from")}
             value={custom.from}
             max={custom.to}
-            onChange={(e) => e.target.value && onCustom({ ...custom, from: e.target.value })}
+            onChange={(from) => onCustom({ ...custom, from })}
           />
           <span className="muted">–</span>
-          <input
-            type="date"
-            className="input compact"
-            aria-label={t("budget.to")}
-            value={custom.to}
-            min={custom.from}
-            onChange={(e) => e.target.value && onCustom({ ...custom, to: e.target.value })}
-          />
+          <DateField label={t("budget.to")} value={custom.to} min={custom.from} onChange={(to) => onCustom({ ...custom, to })} />
         </>
       )}
     </>

@@ -102,7 +102,11 @@ export function BudgetPage() {
     const listed = new Set(transactions.map((tx) => tx.account_id));
     return overview.accounts.filter((a) => !a.hidden && listed.has(a.id));
   }, [overview, transactions]);
-  const range = rangeOf(preset, today, custom);
+  const first = useMemo(
+    () => transactions?.reduce<string | null>((min, tx) => (min === null || tx.date < min ? tx.date : min), null) ?? null,
+    [transactions],
+  );
+  const range = rangeOf(preset, today, custom, first);
   const validRange = range.from <= range.to;
 
   // Each list at the top is filtered by the other two, not by itself, so that more can be picked.

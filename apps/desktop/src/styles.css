@@ -1210,3 +1210,7 @@ th:hover .sort-mark.idle {
   background: var(--surface);
   z-index: 1;
 }
+.crash-detail {
+  white-space: pre-wrap;
+  margin: 0 0 12px;
+}

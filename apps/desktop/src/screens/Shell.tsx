@@ -1,6 +1,7 @@
 import type { EngineStatus } from "@kerfin/core";
 import { useState } from "react";
 
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { JobsProvider } from "../components/Jobs";
 import { RefreshOnStart } from "../components/RefreshOnStart";
 import { DataProvider } from "../data";
@@ -89,6 +90,8 @@ export function Shell({
             </nav>
             <main className="main">
               <div className="page">
+                {/* Keyed by page: going to another page clears a page's error. */}
+                <ErrorBoundary key={page}>
                 {page === "overview" && <OverviewPage onNavigate={setPage} />}
                 {page === "budget" && <BudgetPage />}
                 {page === "types" && <AccountTypesPage />}
@@ -97,6 +100,7 @@ export function Shell({
                 {page === "insurance" && <InsurancePage />}
                 {page === "accounts" && <Accounts />}
                 {page === "settings" && <Settings status={status} onStatus={onStatus} updater={updater} />}
+                </ErrorBoundary>
               </div>
             </main>
           </div>

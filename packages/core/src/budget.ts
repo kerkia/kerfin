@@ -51,16 +51,33 @@ export interface Budget {
   payeeNames: Record<string, string>; // by payee key, as the latest transaction names it
 }
 
+/** The most months a budget covers: the latest of a longer range. */
+export const MAX_MONTHS = 600;
+
 /** The month `n` months after `month` (YYYY-MM); `n` may be negative. */
 export function addMonths(month: string, n: number): string {
   const index = Number(month.slice(0, 4)) * 12 + Number(month.slice(5, 7)) - 1 + n;
-  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+  return `${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`;
 }
 
 /** The last day of a month (YYYY-MM), as YYYY-MM-DD. */
-function monthEnd(month: string): string {
-  const day = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0));
-  return day.toISOString().slice(0, 10);
+export function monthEnd(month: string): string {
+  const year = Number(month.slice(0, 4));
+  const index = Number(month.slice(5, 7));
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][index - 1] ?? 31;
+  return `${month}-${days}`;
+}
+
+/** The calendar months from `from` to `to` (YYYY-MM-DD), oldest first: the latest MAX_MONTHS. */
+export function monthsBetween(from: string, to: string): string[] {
+  const last = to.slice(0, 7);
+  const earliest = addMonths(last, 1 - MAX_MONTHS);
+  const months: string[] = [];
+  for (let month = from.slice(0, 7) > earliest ? from.slice(0, 7) : earliest; month <= last; month = addMonths(month, 1)) {
+    months.push(month);
+  }
+  return months;
 }
 
 /** The `count` calendar months ending with `today`'s, as a date range. */
@@ -82,11 +99,11 @@ export function budget(
   categories: CategoryDef[] = DEFAULT_CATEGORIES,
   filter: BudgetFilter = {},
 ): Budget {
-  const { from, to } = range;
-  const months: BudgetMonth[] = [];
-  for (let month = from.slice(0, 7); month <= to.slice(0, 7) && months.length < 600; month = addMonths(month, 1)) {
-    months.push({ month, income: 0, spending: 0 });
-  }
+  const months: BudgetMonth[] = monthsBetween(range.from, range.to).map((month) => ({ month, income: 0, spending: 0 }));
+  const { to } = range;
+  // A range longer than MAX_MONTHS starts with the first month kept.
+  const first = months[0] ? `${months[0].month}-01` : range.from;
+  const from = range.from > first ? range.from : first;
   const byMonth = new Map(months.map((m) => [m.month, m]));
   const kinds = new Map(categories.map((c) => [c.key, c.kind]));
   const totals = new Map<string, number>();

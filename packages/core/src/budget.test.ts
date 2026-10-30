@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { budget, lastMonths } from "./budget";
+import { addMonths, budget, lastMonths } from "./budget";
 import { DEFAULT_CATEGORIES, categorise, categoryKey, payeeKey, transferPairs, withRequired } from "./categories";
 import type { AccountTransaction } from "./types";
 
@@ -49,6 +49,20 @@ describe("budget filters", () => {
     expect(result.flows.categories["housing"]).toEqual({ count: 3, in: 0, out: 2700 });
     expect(result.flows.payees["salary"]).toEqual({ count: 2, in: 6000, out: 0 });
     expect(result.payeeNames["some shop"]).toBe("Some Shop");
+  });
+});
+
+describe("budget over odd dates", () => {
+  // A date field typed into goes through years such as 0002 and 0020 on its way to 2014.
+  it("survives a range from a far year, keeping the latest 50 years of months", () => {
+    const result = budget(TRANSACTIONS, new Set(["current"]), { from: "0002-10-30", to: "2026-10-29" }, "2026-10-29");
+    expect(result.months).toHaveLength(600);
+    expect(result.months.at(-1)!.month).toBe("2026-10");
+    expect(result.months.at(-1)!.spending).toBe(1000);
+  });
+
+  it("writes far years with four digits", () => {
+    expect(addMonths("0002-12", 1)).toBe("0003-01");
   });
 });
 

@@ -4,7 +4,7 @@
 // spending categories only, refunds lowering them. Only months that are over count, so a
 // month under way doesn't read as a drop.
 import { amount } from "./analytics";
-import { addMonths, passes } from "./budget";
+import { monthEnd, monthsBetween, passes } from "./budget";
 import { DEFAULT_CATEGORIES, categorise } from "./categories";
 import type { CategoryDef } from "./categories";
 import type { AccountTransaction } from "./types";
@@ -37,11 +37,6 @@ export interface TrendStats {
   residual: number; // the standard deviation of the months around the trend
 }
 
-/** The last day of a month (YYYY-MM), as YYYY-MM-DD. */
-function monthEnd(month: string): string {
-  return new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
-}
-
 /**
  * Spending a month from `range.from` to `range.to` as of `today`, over the months that are
  * complete in the range and over, for `accounts` (ids), the spending `picked` (category
@@ -62,10 +57,9 @@ export function spendingAnalysis(
   },
 ): SpendingAnalysis {
   const { accounts, picked, payeesOut, range, today, split, rules = {}, categories = DEFAULT_CATEGORIES } = options;
-  const months: string[] = [];
-  for (let month = range.from.slice(0, 7); month <= range.to.slice(0, 7) && months.length < 600; month = addMonths(month, 1)) {
-    if (`${month}-01` >= range.from && monthEnd(month) <= range.to && monthEnd(month) < today) months.push(month);
-  }
+  const months = monthsBetween(range.from, range.to).filter(
+    (month) => `${month}-01` >= range.from && monthEnd(month) <= range.to && monthEnd(month) < today,
+  );
   const index = new Map(months.map((m, i) => [m, i]));
   const kinds = new Map(categories.map((c) => [c.key, c.kind]));
   const series = new Map<string, number[]>();

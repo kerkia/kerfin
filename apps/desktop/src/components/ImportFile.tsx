@@ -37,6 +37,10 @@ export function ImportFile({ update, onBack, onDone }: { update?: boolean; onBac
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Once imported: what went where, for the user to check.
+  const [done, setDone] = useState<{ file: string; into: string; created: boolean; count: number; first: string; last: string }[] | null>(
+    null,
+  );
 
   async function read(file: File | undefined) {
     if (!file) return;
@@ -81,11 +85,73 @@ export function ImportFile({ update, onBack, onDone }: { update?: boolean; onBac
         ),
       );
       await refresh();
-      onDone();
+      const names = new Map((overview?.accounts ?? []).map((a) => [a.id, a.label]));
+      setDone(
+        (found ?? [])
+          .filter((a) => choices[a.number]!.target !== "skip")
+          .map((a) => {
+            const choice = choices[a.number]!;
+            const created = choice.target === "new";
+            return {
+              file: a.label,
+              into: created ? choice.label.trim() : (names.get(choice.target) ?? a.label),
+              created,
+              count: a.count,
+              first: a.first,
+              last: a.last,
+            };
+          }),
+      );
+      setBusy(false);
     } catch {
       setError(t("import.failed"));
       setBusy(false);
     }
+  }
+
+  if (done) {
+    const total = done.reduce((sum, d) => sum + d.count, 0);
+    return (
+      <>
+        <h2 style={{ margin: 0 }}>{t("import.complete")}</h2>
+        <p className="secondary" style={{ margin: 0 }} role="status">
+          {t("import.completeSummary", { n: total.toLocaleString() })}
+        </p>
+        <table className="table portfolio dense">
+          <thead>
+            <tr>
+              <th>{t("import.inFile")}</th>
+              <th>{t("import.into")}</th>
+              <th className="right">{t("budget.count")}</th>
+              <th>{t("import.dates")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {done.map((d) => (
+              <tr key={d.file}>
+                <td>{d.file}</td>
+                <td>
+                  {d.into}
+                  {d.created && <span className="muted small"> · {t("import.created")}</span>}
+                </td>
+                <td className="right num">{d.count.toLocaleString()}</td>
+                <td className="num">
+                  {longDate(d.first)} – {longDate(d.last)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="muted small" style={{ margin: 0 }}>
+          {t("import.completeHelp")}
+        </p>
+        <div className="dialog-actions">
+          <button className="btn primary" onClick={onDone}>
+            {t("import.close")}
+          </button>
+        </div>
+      </>
+    );
   }
 
   const accounts = (overview?.accounts ?? []).filter((a) => !a.hidden);
@@ -194,7 +260,7 @@ export function ImportFile({ update, onBack, onDone }: { update?: boolean; onBac
         </button>
         {found && (
           <button className="btn primary" disabled={busy || invalid} onClick={() => void save()}>
-            {t("import.save")}
+            {busy ? t("import.importing") : t("import.save")}
           </button>
         )}
       </div>
