@@ -18,7 +18,6 @@ import type { AccountTransaction, Categorised, CategoryDef, Flow, SplitBy, Trans
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
-import { ImportTransactions } from "../components/ImportFile";
 import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored } from "../components/Period";
 import type { Preset } from "../components/Period";
 import { TrendChart } from "../components/charts";
@@ -30,7 +29,7 @@ import { categoryName, longDate, money, monthName, percent, t } from "../i18n";
 const PAGE = 100;
 const EDIT = "__edit"; // the category picker's entry that opens the category editor
 const SPLITS = ["total", "category", "account"] as const;
-const AHEAD = ["3", "6", "12"] as const;
+const AHEAD = ["0", "3", "6", "12", "24"] as const; // months projected; 0 for none
 const COLORS = 6; // named lines; the rest fold into "Other"
 const OTHER = "__other";
 const MIN_MONTHS = 3; // for a trend worth showing
@@ -59,7 +58,6 @@ export function BudgetPage() {
   const [rules, setRules] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<CategoryDef[]>(DEFAULT_CATEGORIES);
   const [editing, setEditing] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [unselected, setUnselected] = useState<Set<string>>(new Set());
   const [categoriesOut, setCategoriesOut] = useState<Set<string>>(new Set());
   const [payeesOut, setPayeesOut] = useState<Set<string>>(new Set());
@@ -136,21 +134,11 @@ export function BudgetPage() {
     // The range by its dates: rangeOf gives a new object each render.
   }, [transactions, accounts, unselected, categoriesOut, payeesOut, range.from, range.to, today, rules, categories, split, validRange]);
 
-  const dialogs = (
-    <>
-      <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />
-      <ImportTransactions open={importing} onClose={() => setImporting(false)} />
-    </>
-  );
+  const dialogs = <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />;
   const actions = (
-    <>
-      <button className="btn small" onClick={() => setImporting(true)}>
-        {t("import.updateButton")}
-      </button>
-      <button className="btn small" onClick={() => setEditing(true)}>
-        {t("budget.editCategories")}
-      </button>
-    </>
+    <button className="btn small" onClick={() => setEditing(true)}>
+      {t("budget.editCategories")}
+    </button>
   );
 
   if (!overview || !transactions) return <h1>{t("nav.budget")}</h1>;
@@ -185,29 +173,17 @@ export function BudgetPage() {
     <div className="page-header">
       <h1>{t("nav.budget")}</h1>
       <div className="row" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
-        <PeriodPicker
-          preset={preset}
-          custom={custom}
-          range={range}
-          storageKey="kerfin.budgetRange"
-          onPreset={setPreset}
-          onCustom={setCustom}
-        />
-        <select
-          className="input compact"
-          aria-label={t("analysis.ahead")}
-          value={ahead}
-          onChange={(e) => {
-            setAhead(e.target.value as (typeof AHEAD)[number]);
-            remember("kerfin.budgetAhead", e.target.value);
-          }}
-        >
-          {AHEAD.map((n) => (
-            <option key={n} value={n}>
-              {t("analysis.aheadMonths", { n })}
-            </option>
-          ))}
-        </select>
+        <span className="inline-label">
+          {t("budget.period")}
+          <PeriodPicker
+            preset={preset}
+            custom={custom}
+            range={range}
+            storageKey="kerfin.budgetRange"
+            onPreset={setPreset}
+            onCustom={setCustom}
+          />
+        </span>
         {actions}
       </div>
     </div>
@@ -248,21 +224,47 @@ export function BudgetPage() {
         : split === "account"
           ? (labels.get(key) ?? key)
           : nameOf(key);
+  const total = trendStats(months.map((_, i) => ranked.reduce((sum, s) => sum + s.values[i]!, 0)));
+  const count = Number(ahead);
+  const enough = months.length >= MIN_MONTHS;
+  const projecting = enough && count > 0;
+  const future = projecting ? Array.from({ length: count }, (_, i) => addMonths(months[months.length - 1]!, i + 1)) : [];
+  const projected = projection(total, count);
+  const projectedSum = projected.reduce((sum, v) => sum + v, 0);
+  // The total is drawn with its trend; split, each line goes on with its own projection, from
+  // its trend at the last month.
+  const onwards = (values: number[]) => {
+    const stats = trendStats(values);
+    return [trendAt(stats, months.length - 1), ...projection(stats, count)];
+  };
   const chartSeries: TrendSeries[] = lines.map((line, i) => ({
     key: line.key,
     label: lineName(line.key),
     color: line.key === OTHER ? "var(--series-other)" : `var(--series-${i + 1})`,
     values: line.values,
+    projected: projecting && split !== "total" ? onwards(line.values) : undefined,
   }));
-
-  const total = trendStats(months.map((_, i) => ranked.reduce((sum, s) => sum + s.values[i]!, 0)));
-  const count = Number(ahead);
-  const future = months.length ? Array.from({ length: count }, (_, i) => addMonths(months[months.length - 1]!, i + 1)) : [];
-  const enough = months.length >= MIN_MONTHS;
-  // The trend and projection are drawn for the total; split, each line's are in the table.
-  const trendShown = enough && split === "total";
-  const projected = projection(total, count);
-  const projectedSum = projected.reduce((sum, v) => sum + v, 0);
+  // Over more than a year, the axis names the years too.
+  const longRange = months.length + future.length > 12;
+  const aheadPicker = (
+    <label className="inline-label">
+      {t("analysis.ahead")}
+      <select
+        className="input compact"
+        value={ahead}
+        onChange={(e) => {
+          setAhead(e.target.value as (typeof AHEAD)[number]);
+          remember("kerfin.budgetAhead", e.target.value);
+        }}
+      >
+        {AHEAD.map((n) => (
+          <option key={n} value={n}>
+            {n === "0" ? t("analysis.aheadNone") : t("analysis.aheadMonths", { n })}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 
   const value = (tx: Categorised) => amount(tx.amount);
   const compare: Record<SortKey, (a: Categorised, b: Categorised) => number> = {
@@ -385,51 +387,46 @@ export function BudgetPage() {
               : t("analysis.tooFew", { n: 1 })
           }
         />
-        <Kpi
-          label={t("analysis.projected", { n: count })}
-          value={enough ? whole(projectedSum) : "–"}
-          detail={
-            enough
-              ? t("analysis.projectedDetail", {
-                  amount: whole(projected[projected.length - 1]!),
-                  month: monthName(future[future.length - 1]!, true),
-                })
-              : t("analysis.tooFew", { n: MIN_MONTHS })
-          }
-        />
+        {count > 0 && (
+          <Kpi
+            label={t("analysis.projected", { n: count })}
+            value={projecting ? whole(projectedSum) : "–"}
+            detail={
+              projecting
+                ? t("analysis.projectedDetail", {
+                    amount: whole(projected[projected.length - 1]!),
+                    month: monthName(future[future.length - 1]!, true),
+                  })
+                : t("analysis.tooFew", { n: MIN_MONTHS })
+            }
+          />
+        )}
       </div>
 
       <div className="budget-analysis">
         <section className="card">
           <div className="card-header">
             <h2>{t("analysis.overTime")}</h2>
-            <div className="segmented" role="radiogroup" aria-label={t("analysis.split")}>
-              {SPLITS.map((by) => (
-                <button
-                  key={by}
-                  role="radio"
-                  aria-checked={split === by}
-                  className={split === by ? "segment active" : "segment"}
-                  onClick={() => {
-                    setSplit(by);
-                    remember("kerfin.budgetSplit", by);
-                  }}
-                >
-                  {t(`analysis.split.${by}`)}
-                </button>
-              ))}
+            <div className="row" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {aheadPicker}
+              <div className="segmented" role="radiogroup" aria-label={t("analysis.split")}>
+                {SPLITS.map((by) => (
+                  <button
+                    key={by}
+                    role="radio"
+                    aria-checked={split === by}
+                    className={split === by ? "segment active" : "segment"}
+                    onClick={() => {
+                      setSplit(by);
+                      remember("kerfin.budgetSplit", by);
+                    }}
+                  >
+                    {t(`analysis.split.${by}`)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          {chartSeries.length >= 2 && (
-            <div className="trend-legend">
-              {chartSeries.map((s) => (
-                <span key={s.key} className="legend-name">
-                  <span className="swatch" style={{ background: s.color }} aria-hidden />
-                  {s.label}
-                </span>
-              ))}
-            </div>
-          )}
           {months.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>
               {t("analysis.noMonths")}
@@ -441,23 +438,24 @@ export function BudgetPage() {
           ) : (
             <TrendChart
               months={months}
-              ahead={trendShown ? future : []}
+              ahead={future}
               series={chartSeries}
               trend={
-                trendShown
+                enough && split === "total"
                   ? {
-                      values: [...months.map((_, i) => trendAt(total, i)), ...projected],
+                      values: [...months.map((_, i) => trendAt(total, i)), ...(projecting ? projected : [])],
                       band: total.residual,
                       label: t("analysis.trendLine"),
-                      projectionLabel: t("analysis.projection"),
                     }
                   : undefined
               }
-              label={(m) => monthName(m)}
+              projectionLabel={t("analysis.projectionMonths", { n: count })}
+              label={(m) => monthName(m, longRange)}
               title={(m) => monthName(m, true)}
             />
           )}
           <p className="muted small" style={{ margin: "10px 0 0" }}>
+            {!enough && months.length > 0 && `${t("analysis.needMore", { n: MIN_MONTHS, have: months.length })} `}
             {t(split === "total" ? "analysis.chartHelp" : "analysis.chartHelpSplit")}
           </p>
         </section>
@@ -479,7 +477,7 @@ export function BudgetPage() {
                   <th className="right">{t("analysis.col.trend")}</th>
                   <th className="right">{t("analysis.col.yearly")}</th>
                   <th className="right">{t("analysis.col.r2")}</th>
-                  <th className="right">{t("analysis.col.projected", { n: count })}</th>
+                  {count > 0 && <th className="right">{t("analysis.col.projected", { n: count })}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -709,7 +707,9 @@ function StatsRow({ name, stats, ahead, enough }: { name: string; stats: TrendSt
       </td>
       <td className="right num">{enough ? percent(stats.yearly, true) : dash}</td>
       <td className="right num">{enough ? stats.r2.toFixed(2) : dash}</td>
-      <td className="right num">{enough ? whole(projection(stats, ahead).reduce((sum, v) => sum + v, 0)) : dash}</td>
+      {ahead > 0 && (
+        <td className="right num">{enough ? whole(projection(stats, ahead).reduce((sum, v) => sum + v, 0)) : dash}</td>
+      )}
     </tr>
   );
 }

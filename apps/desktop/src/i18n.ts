@@ -29,7 +29,10 @@ const en = {
   "nav.income": "Fees & income",
   "nav.budget": "Budget",
   "analysis.ahead": "Projection",
-  "analysis.aheadMonths": "Project {n} months",
+  "analysis.aheadMonths": "{n} months",
+  "analysis.aheadNone": "None",
+  "analysis.needMore":
+    "This period has {have} complete months: the trend and projection need at least {n}, so pick a longer period.",
   "analysis.noMonths":
     "No month in this period is over yet. Pick a longer period: the analysis counts complete months only.",
   "analysis.nothing": "No spending for these accounts and categories over the period.",
@@ -49,11 +52,11 @@ const en = {
   "analysis.split.category": "By category",
   "analysis.split.account": "By account",
   "analysis.trendLine": "Trend",
-  "analysis.projection": "Projection",
+  "analysis.projectionMonths": "Projection, next {n} months",
   "analysis.chartHelp":
     "The dashed line is the trend (the straight line closest to the months); past the last complete month it continues as the projection, and the band shows where months fell around the trend (± one standard deviation). The month under way is left out until it is over.",
   "analysis.chartHelpSplit":
-    "The largest lines are named; the rest are added up as Other. Each line's trend and projection are in the table below; the Total view draws them. The month under way is left out until it is over.",
+    "The largest lines are named; the rest are added up as Other. Past the last complete month, each line goes on dashed as its own trend's projection; their statistics are in the table below. The month under way is left out until it is over.",
   "analysis.statistics": "Statistics",
   "analysis.col.total": "Spent",
   "analysis.col.average": "Average a month",

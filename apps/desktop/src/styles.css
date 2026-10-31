@@ -768,6 +768,22 @@ table.table {
   border-radius: 3px;
   flex: none;
 }
+.swatch-dash {
+  width: 16px;
+  border-top: 2px dashed var(--text-2);
+  flex: none;
+}
+.swatch-projection {
+  background: var(--grid);
+  border: 1px solid var(--border);
+}
+.inline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
 .ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;

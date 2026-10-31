@@ -152,7 +152,7 @@ Transactions come from Finary (on plans that include its budget) or from a bank'
 (`engine/src/kerfin_engine/bank_export.py`: BoursoBank's, which includes the accounts it
 aggregates). "Add account › From a transactions file" lists the file's accounts, each to
 create (named and typed by the user), add to an existing account, or leave out. "Import
-transactions" (in Accounts and Budget) is the same for newer files: the file's accounts go
+transactions" (in Accounts) is the same for newer files: the file's accounts go
 to the accounts they went to before, unknown ones are left out unless the user says, and
 each shows how many of its transactions are newer than the account's latest. An account's
 panel in Accounts imports into that account alone. Which of the file's accounts
@@ -166,8 +166,10 @@ for what the other two keep (`budget()` takes the filter). Income and savings fo
 accounts only. Its analysis (`packages/core/src/analysis.ts`) charts spending a month, as a
 total or by category or account, over the period's complete months only. Each line gets its
 average, standard deviation (and variation, relative to the average), the least-squares
-trend with its R², and the trend continued over the months ahead; the chart draws the
-total's, with a band of one standard deviation of the months around the trend.
+trend with its R², and the trend continued over the months ahead (none, or 3 to 24, picked
+on the chart); the chart draws the total's, with a band of one standard deviation of the
+months around the trend, or each line's own projection when split. A trend needs three
+complete months.
 
 An account a connection brings in (Finary's) can be removed: its data goes, and later syncs
 leave it out until the user restores the connection's removed accounts.

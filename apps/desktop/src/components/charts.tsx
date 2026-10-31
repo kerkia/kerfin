@@ -302,28 +302,32 @@ export interface TrendSeries {
   label: string;
   color: string; // a CSS color, e.g. var(--series-1)
   values: number[]; // one per month
+  projected?: number[]; // the line's trend from the last month on: one more than `ahead`
 }
 
 const TREND_HEIGHT = 260;
 const TREND_PAD = { top: 14, right: 16, bottom: 26, left: 56 };
 
 /**
- * Lines over months, on a zero baseline, with a crosshair and a tooltip per month. With
- * `trend`, a dashed trend line runs through the months and on over `ahead` (months to come),
- * where a band shows the range the months fell in around the trend.
+ * Lines over months, on a zero baseline, with a legend, a crosshair and a tooltip per month.
+ * With `trend`, a dashed trend line runs through the months and on over `ahead` (months to
+ * come), where a band shows the range the months fell in around the trend; a line with
+ * `projected` goes on dashed over `ahead` instead.
  */
 export function TrendChart({
   months,
   ahead = [],
   series,
   trend,
+  projectionLabel,
   label,
   title,
 }: {
   months: string[];
   ahead?: string[];
   series: TrendSeries[];
-  trend?: { values: number[]; band: number; label: string; projectionLabel: string }; // values: months, then ahead
+  trend?: { values: number[]; band: number; label: string }; // values: months, then ahead
+  projectionLabel: string; // for the months ahead
   label: (month: string) => string; // under the axis
   title: (month: string) => string; // in the tooltip
 }) {
@@ -375,103 +379,141 @@ export function TrendChart({
 
   const projected = hover !== null && hover > last;
   const trendValue = hover !== null && trend ? Math.max(trend.values[hover] ?? 0, 0) : null;
+  // A line's value at month `i`: its own, or past the last month, its projection, if any.
+  const valueAt = (s: TrendSeries, i: number) => (i > last ? s.projected?.[i - last] : s.values[i]);
+  const shownAt = (i: number) => series.filter((s) => valueAt(s, i) !== undefined);
 
   return (
-    <div className="chart-wrap" ref={wrap}>
-      <svg
-        className="chart-svg"
-        width={width}
-        height={TREND_HEIGHT}
-        onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
-        role="img"
-        aria-label={series
-          .map((s) => `${s.label}: ${s.values.map((v, i) => `${title(months[i]!)} ${money(v)}`).join(", ")}`)
-          .join("; ")}
-      >
-        {ticks.map((tick) => (
-          <g key={tick}>
-            <line x1={TREND_PAD.left} x2={width - TREND_PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
-            <text x={TREND_PAD.left - 8} y={y(tick) + 4} textAnchor="end">
-              {compactMoney(tick)}
-            </text>
-          </g>
-        ))}
-        {all.map((month, i) =>
-          i % step === 0 || i === count - 1 ? (
-            <text
-              key={month}
-              x={x(i)}
-              y={TREND_HEIGHT - 6}
-              textAnchor={count > 1 && i === 0 ? "start" : count > 1 && i === count - 1 ? "end" : "middle"}
-            >
-              {label(month)}
-            </text>
-          ) : null,
-        )}
-        {ahead.length > 0 && (
-          <>
-            <rect x={x(last)} y={TREND_PAD.top} width={x(count - 1) - x(last)} height={innerH} fill="var(--grid)" opacity={0.35} />
-            <text x={x(last) + 6} y={TREND_PAD.top + 12}>
-              {trend?.projectionLabel}
-            </text>
-          </>
-        )}
-        {band && <path d={band} fill="var(--text-2)" opacity={0.12} />}
-        {trend && (
-          <path d={path(trend.values)} fill="none" stroke="var(--text-2)" strokeWidth={1.5} strokeDasharray="5 4" />
-        )}
-        {series.map((s) => (
-          <path
-            key={s.key}
-            d={path(s.values)}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ))}
-        {hover !== null && (
-          <line x1={x(hover)} x2={x(hover)} y1={TREND_PAD.top} y2={TREND_PAD.top + innerH} stroke="var(--axis)" />
-        )}
-        {hover !== null &&
-          !projected &&
-          series.map((s) => (
-            <circle key={s.key} cx={x(hover)} cy={y(s.values[hover]!)} r={4} fill={s.color} stroke="var(--surface)" strokeWidth={2} />
-          ))}
-        {projected && trendValue !== null && (
-          <circle cx={x(hover)} cy={y(trendValue)} r={4} fill="var(--text-2)" stroke="var(--surface)" strokeWidth={2} />
-        )}
-      </svg>
-      {hover !== null && (
-        <div className="tooltip" style={{ left: Math.min(x(hover) + 12, width - 220), top: TREND_PAD.top }}>
-          <div className="muted">{title(all[hover]!)}</div>
-          {!projected &&
+    <>
+      {(series.length >= 2 || trend || ahead.length > 0) && (
+        <div className="trend-legend">
+          {series.length >= 2 &&
             series.map((s) => (
+              <span key={s.key} className="legend-name">
+                <span className="swatch" style={{ background: s.color }} aria-hidden />
+                {s.label}
+              </span>
+            ))}
+          {trend && (
+            <span className="legend-name">
+              <span className="swatch-dash" aria-hidden />
+              {trend.label}
+            </span>
+          )}
+          {ahead.length > 0 && (
+            <span className="legend-name">
+              <span className="swatch swatch-projection" aria-hidden />
+              {projectionLabel}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="chart-wrap" ref={wrap}>
+        <svg
+          className="chart-svg"
+          width={width}
+          height={TREND_HEIGHT}
+          onMouseMove={onMove}
+          onMouseLeave={() => setHover(null)}
+          role="img"
+          aria-label={series
+            .map((s) => `${s.label}: ${s.values.map((v, i) => `${title(months[i]!)} ${money(v)}`).join(", ")}`)
+            .join("; ")}
+        >
+          {ticks.map((tick) => (
+            <g key={tick}>
+              <line x1={TREND_PAD.left} x2={width - TREND_PAD.right} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
+              <text x={TREND_PAD.left - 8} y={y(tick) + 4} textAnchor="end">
+                {compactMoney(tick)}
+              </text>
+            </g>
+          ))}
+          {all.map((month, i) =>
+            i === count - 1 || (i % step === 0 && count - 1 - i >= step / 2) ? (
+              <text
+                key={month}
+                x={x(i)}
+                y={TREND_HEIGHT - 6}
+                textAnchor={count > 1 && i === 0 ? "start" : count > 1 && i === count - 1 ? "end" : "middle"}
+              >
+                {label(month)}
+              </text>
+            ) : null,
+          )}
+          {ahead.length > 0 && (
+            <rect x={x(last)} y={TREND_PAD.top} width={x(count - 1) - x(last)} height={innerH} fill="var(--grid)" opacity={0.35} />
+          )}
+          {band && <path d={band} fill="var(--text-2)" opacity={0.12} />}
+          {trend && (
+            <path d={path(trend.values)} fill="none" stroke="var(--text-2)" strokeWidth={1.5} strokeDasharray="5 4" />
+          )}
+          {series.map((s) => (
+            <path
+              key={s.key}
+              d={path(s.values)}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={2}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ))}
+          {ahead.length > 0 &&
+            series.map((s) =>
+              s.projected ? (
+                <path
+                  key={`${s.key}-ahead`}
+                  d={path(s.projected, last)}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={2}
+                  strokeDasharray="5 4"
+                  strokeLinecap="round"
+                />
+              ) : null,
+            )}
+          {hover !== null && (
+            <line x1={x(hover)} x2={x(hover)} y1={TREND_PAD.top} y2={TREND_PAD.top + innerH} stroke="var(--axis)" />
+          )}
+          {hover !== null &&
+            shownAt(hover).map((s) => (
+              <circle key={s.key} cx={x(hover)} cy={y(valueAt(s, hover)!)} r={4} fill={s.color} stroke="var(--surface)" strokeWidth={2} />
+            ))}
+          {projected && trendValue !== null && (
+            <circle cx={x(hover)} cy={y(trendValue)} r={4} fill="var(--text-2)" stroke="var(--surface)" strokeWidth={2} />
+          )}
+        </svg>
+        {hover !== null && (
+          <div className="tooltip" style={{ left: Math.min(x(hover) + 12, width - 220), top: TREND_PAD.top }}>
+            <div className="muted">
+              {title(all[hover]!)}
+              {projected && ` · ${projectionLabel}`}
+            </div>
+            {shownAt(hover).map((s) => (
               <div key={s.key} className="legend-name">
                 <span className="swatch" style={{ background: s.color }} aria-hidden />
                 <span>{s.label}</span>
                 <span className="num" style={{ marginLeft: "auto", paddingLeft: 12 }}>
-                  {money(s.values[hover]!, "EUR", { maximumFractionDigits: 0 })}
+                  {money(valueAt(s, hover)!, "EUR", { maximumFractionDigits: 0 })}
                 </span>
               </div>
             ))}
-          {trend && trendValue !== null && (
-            <div className="muted">
-              {projected ? trend.projectionLabel : trend.label}{" "}
-              <span className="num">{money(trendValue, "EUR", { maximumFractionDigits: 0 })}</span>
-              {projected &&
-                ` (${money(Math.max(trendValue - trend.band, 0), "EUR", { maximumFractionDigits: 0 })} – ${money(
-                  trendValue + trend.band,
-                  "EUR",
-                  { maximumFractionDigits: 0 },
-                )})`}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+            {trend && trendValue !== null && (
+              <div className="muted">
+                {trend.label}{" "}
+                <span className="num">{money(trendValue, "EUR", { maximumFractionDigits: 0 })}</span>
+                {projected &&
+                  ` (${money(Math.max(trendValue - trend.band, 0), "EUR", { maximumFractionDigits: 0 })} – ${money(
+                    trendValue + trend.band,
+                    "EUR",
+                    { maximumFractionDigits: 0 },
+                  )})`}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
