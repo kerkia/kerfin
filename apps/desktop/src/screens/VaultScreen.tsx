@@ -9,8 +9,9 @@ const MIN_LENGTH = 10; // kerfin_engine.vault.MIN_PASSPHRASE_LENGTH
 
 /**
  * Puts the cursor in the passphrase field. At launch the window itself doesn't have the
- * keyboard yet (WebView2 waits for a click), so the desktop app asks for it first; the
- * field takes the focus back whenever the window gets it.
+ * keyboard yet (WebView2 waits for a click), so the desktop app asks for it first, but only
+ * when the window is already the active one: locking while another app is in front must not
+ * bring Kerfin over it. The field takes the focus back whenever the window gets it.
  */
 function useStartFocus(input: React.RefObject<HTMLInputElement | null>) {
   useEffect(() => {
@@ -19,7 +20,10 @@ function useStartFocus(input: React.RefObject<HTMLInputElement | null>) {
     };
     if (isTauri()) {
       void import("@tauri-apps/api/window")
-        .then(({ getCurrentWindow }) => getCurrentWindow().setFocus())
+        .then(async ({ getCurrentWindow }) => {
+          const current = getCurrentWindow();
+          if (await current.isFocused()) await current.setFocus();
+        })
         .catch(() => undefined)
         .finally(() => input.current?.focus());
     }
