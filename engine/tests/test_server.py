@@ -213,6 +213,18 @@ def test_a_bank_export_is_previewed_then_imported(api: Any) -> None:
     assert api("POST", "/api/imports/preview", {"data": bad})["error"]["code"] == "unreadable_export"
 
 
+def test_views_are_kept_in_the_vault(api: Any) -> None:
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    assert api("GET", "/api/views") == {}
+    budget = {"accounts": ["a1"], "categories": ["housing"], "payees": ["some shop"]}
+    assert api("PUT", "/api/views/budget", {"view": budget}) == {}
+    assert api("PUT", "/api/views/assets", {"view": {"kind": "savings"}}) == {}
+    api("POST", "/api/vault/lock")
+    api("POST", "/api/vault/unlock", {"passphrase": PASSPHRASE})
+    assert api("GET", "/api/views") == {"budget": budget, "assets": {"kind": "savings"}}
+    assert api("PUT", "/api/views/budget", {"view": ["some shop"]})["status"] == 400
+
+
 def test_auto_lock_after_idle(api: Any) -> None:
     api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
     app = api.server.app

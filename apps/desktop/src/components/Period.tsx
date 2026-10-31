@@ -1,7 +1,7 @@
 // The period a budget page covers: the last months (counted with the current one), this year,
 // last year, all the transactions, or dates the user picks. Each page remembers its own choice.
 import { lastMonths } from "@kerfin/core";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { t } from "../i18n";
 
@@ -40,23 +40,6 @@ export function storedRange(key: string, fallback: Range): Range {
   } catch {
     return fallback;
   }
-}
-
-// Kept in memory while Kerfin runs, through locking (which leaves the pages), but not on
-// disk: filters name payees.
-const kept = new Map<string, unknown>();
-
-/** A state that comes back as it was when its page comes back, until Kerfin quits. */
-export function useKept<T>(key: string, initial: () => T): [T, (value: T) => void] {
-  const [value, setValue] = useState<T>(() => (kept.has(key) ? (kept.get(key) as T) : initial()));
-  const set = useCallback(
-    (next: T) => {
-      kept.set(key, next);
-      setValue(next);
-    },
-    [key],
-  );
-  return [value, set];
 }
 
 /** The period's dates; "all" starts with `first`, the earliest transaction's date. */

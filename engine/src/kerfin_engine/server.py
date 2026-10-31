@@ -501,6 +501,31 @@ def all_transactions(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
     }
 
 
+MAX_VIEW_BYTES = 256 * 1024
+
+
+@route("GET", "/api/views")
+def views(app: App, _: re.Match[str], __: dict[str, Any]) -> Any:
+    """The pages' saved choices (filters, sorting), by page."""
+    store, _sync = app.unlocked()
+    return json.loads(store.setting("views", "{}"))
+
+
+@route("PUT", "/api/views/(?P<name>[a-z_]+)")
+def save_view(app: App, match: re.Match[str], body: dict[str, Any]) -> Any:
+    """A page's choices, as the UI gives them ({"view": {...}}). Kept in the vault rather than
+    by the UI, for filters name payees, institutions and insurers."""
+    store, _sync = app.unlocked()
+    view = body.get("view")
+    if not isinstance(view, dict) or len(json.dumps(view)) > MAX_VIEW_BYTES:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_input", "view")
+    saved = json.loads(store.setting("views", "{}"))
+    saved[match["name"]] = view
+    store.set_setting("views", json.dumps(saved))
+    app.persist()
+    return {}
+
+
 CATEGORY_KINDS = {"spending", "income", "excluded"}
 # Categories the rules rely on (see packages/core/src/categories.ts).
 REQUIRED_CATEGORIES = {"transfers", "ignored", "other"}

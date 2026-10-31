@@ -4,6 +4,7 @@ import type { Account, AccountKind, BalancePoint, Change } from "@kerfin/core";
 import { useMemo, useState } from "react";
 
 import { kindLabel, money, percent, signedMoney, t } from "../i18n";
+import { useSavedView } from "../views";
 
 interface Row {
   account: Account;
@@ -14,7 +15,8 @@ interface Row {
   change: Change | null;
 }
 
-type SortKey = "name" | "type" | "share" | "value" | "change";
+const SORT_KEYS = ["name", "type", "share", "value", "change"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
 
 export function AssetsTable({
   accounts,
@@ -31,15 +33,21 @@ export function AssetsTable({
   selectedId?: string | null;
   onSelect: (account: Account) => void;
 }) {
-  const [side, setSide] = useState<"assets" | "liabilities">("assets");
-  const [kind, setKind] = useState<string>("");
-  const [institution, setInstitution] = useState<string>("");
-  const [insurer, setInsurer] = useState<string>("");
+  // As they were after locking or restarting; the search is not kept.
+  const [view, changeView] = useSavedView("assets", {
+    side: "assets",
+    kind: "",
+    institution: "",
+    insurer: "",
+    grouped: false,
+    sort: "value",
+    descending: true,
+  } as { side: string; kind: string; institution: string; insurer: string; grouped: boolean; sort: string; descending: boolean });
   const [query, setQuery] = useState("");
-  const [grouped, setGrouped] = useState(false);
-  const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "value", descending: true });
-
   const liabilities = accounts.some((a) => amount(a.balance) < 0);
+  const side = view.side === "liabilities" && liabilities ? "liabilities" : "assets";
+  const grouped = view.grouped;
+  const sort = { key: SORT_KEYS.find((key) => key === view.sort) ?? "value", descending: view.descending };
   const rows = useMemo<Row[]>(() => {
     const onSide = accounts.filter((a) => (side === "assets" ? amount(a.balance) >= 0 : amount(a.balance) < 0));
     const total = onSide.reduce((sum, a) => sum + Math.abs(amount(a.balance)), 0) || 1;
@@ -56,6 +64,10 @@ export function AssetsTable({
   const kinds = [...new Set(rows.map((r) => r.account.kind))].sort();
   const institutions = [...new Set(rows.map((r) => r.institution))].sort((a, b) => a.localeCompare(b));
   const insurers = [...new Set(rows.map((r) => r.insurer).filter((i): i is string => !!i))].sort();
+  // A saved choice no longer among those offered shows everything.
+  const kind = kinds.find((k) => k === view.kind) ?? "";
+  const institution = institutions.includes(view.institution) ? view.institution : "";
+  const insurer = insurers.includes(view.insurer) ? view.insurer : "";
   const q = query.trim().toLowerCase();
   const shown = rows
     .filter((r) => (!kind || r.account.kind === kind) && (!institution || r.institution === institution))
@@ -76,7 +88,7 @@ export function AssetsTable({
       >
         <button
           className="sort-button"
-          onClick={() => setSort({ key, descending: active ? !sort.descending : key !== "name" && key !== "type" })}
+          onClick={() => changeView({ sort: key, descending: active ? !sort.descending : key !== "name" && key !== "type" })}
         >
           {label}
           <span aria-hidden className={active ? "sort-mark" : "sort-mark idle"}>
@@ -91,7 +103,7 @@ export function AssetsTable({
     <section className="card">
       <div className="card-header">
         <div className="tabs" role="tablist">
-          <button role="tab" aria-selected={side === "assets"} className="tab" onClick={() => setSide("assets")}>
+          <button role="tab" aria-selected={side === "assets"} className="tab" onClick={() => changeView({ side: "assets" })}>
             {t("portfolio.assets")}
           </button>
           {liabilities && (
@@ -99,7 +111,7 @@ export function AssetsTable({
               role="tab"
               aria-selected={side === "liabilities"}
               className="tab"
-              onClick={() => setSide("liabilities")}
+              onClick={() => changeView({ side: "liabilities" })}
             >
               {t("portfolio.liabilities")}
             </button>
@@ -108,7 +120,7 @@ export function AssetsTable({
       </div>
 
       <div className="table-tools">
-        <select className="input compact" aria-label={t("portfolio.type")} value={kind} onChange={(e) => setKind(e.target.value)}>
+        <select className="input compact" aria-label={t("portfolio.type")} value={kind} onChange={(e) => changeView({ kind: e.target.value })}>
           <option value="">{t("portfolio.allTypes")}</option>
           {kinds.map((k) => (
             <option key={k} value={k}>
@@ -120,7 +132,7 @@ export function AssetsTable({
           className="input compact"
           aria-label={t("portfolio.institution")}
           value={institution}
-          onChange={(e) => setInstitution(e.target.value)}
+          onChange={(e) => changeView({ institution: e.target.value })}
         >
           <option value="">{t("portfolio.allInstitutions")}</option>
           {institutions.map((name) => (
@@ -130,7 +142,7 @@ export function AssetsTable({
           ))}
         </select>
         {insurers.length > 0 && (
-          <select className="input compact" aria-label={t("portfolio.insurer")} value={insurer} onChange={(e) => setInsurer(e.target.value)}>
+          <select className="input compact" aria-label={t("portfolio.insurer")} value={insurer} onChange={(e) => changeView({ insurer: e.target.value })}>
             <option value="">{t("portfolio.allInsurers")}</option>
             {insurers.map((name) => (
               <option key={name} value={name}>
@@ -140,7 +152,7 @@ export function AssetsTable({
           </select>
         )}
         <label className="checkbox toggle">
-          <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />
+          <input type="checkbox" checked={grouped} onChange={(e) => changeView({ grouped: e.target.checked })} />
           <span>{t("portfolio.groupByType")}</span>
         </label>
         <input

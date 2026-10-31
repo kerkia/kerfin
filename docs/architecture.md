@@ -47,7 +47,9 @@ Desktop app (Tauri, apps/desktop)
   exists in memory while unlocked; nothing is written in clear. The passphrase has at least
   8 characters and can't be recovered; Settings changes it, re-encrypting the vault and its
   backup under a new salt. Passwords are stored only if the user ticks "remember"; otherwise
-  each sync asks for them.
+  each sync asks for them. The pages' filters and sorting are kept in the vault too (they
+  name payees, institutions, insurers); the UI's own storage holds only choices that name
+  nothing of the user's: periods, dates, splits, zoom.
 - **Locking.** The vault locks after 15 minutes without activity (configurable) and when
   the app closes. After 3 wrong passphrases in a row (unlocking or changing it), the engine
   refuses any for 6 minutes, then twice as long after each new wrong one; the count is kept

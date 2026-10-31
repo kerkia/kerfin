@@ -19,13 +19,14 @@ import type { AccountTransaction, Categorised, CategoryDef, Flow, SplitBy, Step,
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
-import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored, storedRange, useKept } from "../components/Period";
+import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored, storedRange } from "../components/Period";
 import type { Preset } from "../components/Period";
 import { Donut, DonutLegend, TrendChart, donutSlices } from "../components/charts";
 import type { TrendSeries } from "../components/charts";
 import { useData } from "../data";
 import { engine } from "../engine";
 import { categoryName, longDate, money, monthName, percent, shortDate, t } from "../i18n";
+import { useSavedView } from "../views";
 
 const PAGE = 100;
 const EDIT = "__edit"; // the category picker's entry that opens the category editor
@@ -37,7 +38,8 @@ const COLORS = 6; // named lines; the rest fold into "Other"
 const OTHER = "__other";
 const MIN_POINTS = 3; // for a trend worth showing
 
-type SortKey = "date" | "label" | "account" | "category" | "amount";
+const SORT_KEYS = ["date", "label", "account", "category", "amount"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
 type FlowKey = "name" | "count" | "in" | "out";
 type Sort<K> = { key: K; descending: boolean };
 
@@ -61,17 +63,27 @@ export function BudgetPage() {
   const [rules, setRules] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<CategoryDef[]>(DEFAULT_CATEGORIES);
   const [editing, setEditing] = useState(false);
-  // As they were after locking and unlocking.
-  const [unselected, setUnselected] = useKept<Set<string>>("budget.accountsOut", () => new Set());
-  const [categoriesOut, setCategoriesOut] = useKept<Set<string>>("budget.categoriesOut", () => new Set());
-  const [payeesOut, setPayeesOut] = useKept<Set<string>>("budget.payeesOut", () => new Set());
+  // What is left out and the transactions' order, back as they were after locking or restarting.
+  const [view, changeView] = useSavedView("budget", {
+    accounts: [],
+    categories: [],
+    payees: [],
+    sort: "date",
+    descending: true,
+  } as { accounts: string[]; categories: string[]; payees: string[]; sort: string; descending: boolean });
+  const unselected = useMemo(() => new Set(view.accounts), [view.accounts]);
+  const categoriesOut = useMemo(() => new Set(view.categories), [view.categories]);
+  const payeesOut = useMemo(() => new Set(view.payees), [view.payees]);
+  const setUnselected = (out: Set<string>) => changeView({ accounts: [...out] });
+  const setCategoriesOut = (out: Set<string>) => changeView({ categories: [...out] });
+  const setPayeesOut = (out: Set<string>) => changeView({ payees: [...out] });
   const [preset, setPreset] = useState<Preset>(() => stored("kerfin.budgetRange", PRESETS, "12"));
   const today = localToday();
   const [custom, setCustom] = useState(() => storedRange("kerfin.budgetRange", lastMonths(today, 3)));
   const [split, setSplit] = useState<SplitBy>(() => stored("kerfin.budgetSplit", SPLITS, "total"));
   const [ahead, setAhead] = useState(() => stored("kerfin.budgetAhead", AHEAD, "6"));
   const [every, setEvery] = useState(() => stored("kerfin.budgetEvery", EVERY, "auto"));
-  const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "date", descending: true });
+  const sort = { key: SORT_KEYS.find((key) => key === view.sort) ?? "date", descending: view.descending };
   const [shown, setShown] = useState(PAGE);
   const [activeShare, setActiveShare] = useState<string | null>(null);
 
@@ -345,7 +357,7 @@ export function BudgetPage() {
       <th className={right ? "right" : undefined} aria-sort={active ? (sort.descending ? "descending" : "ascending") : "none"}>
         <button
           className="sort-button"
-          onClick={() => setSort({ key, descending: active ? !sort.descending : key === "date" || key === "amount" })}
+          onClick={() => changeView({ sort: key, descending: active ? !sort.descending : key === "date" || key === "amount" })}
         >
           {label}
           <span aria-hidden className={active ? "sort-mark" : "sort-mark idle"}>
