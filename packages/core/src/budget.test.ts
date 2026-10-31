@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addMonths, budget, lastMonths } from "./budget";
-import { DEFAULT_CATEGORIES, categorise, categoryKey, payeeKey, transferPairs, withRequired } from "./categories";
+import { DEFAULT_CATEGORIES, categorise, categoryKey, leadWord, payeeKey, transferPairs, withRequired } from "./categories";
 import type { AccountTransaction } from "./types";
 
 function tx(
@@ -159,6 +159,61 @@ describe("categories", () => {
       ["restaurants", "bank"],
       ["other", "none"],
     ]);
+  });
+
+  it("learns from the user's rules for similar payees, the most given category winning", () => {
+    const learned = categorise(
+      [
+        tx("a", "2026-10-01", "CARTE 01/10 ACME STORE NORTH", "-1"),
+        tx("a", "2026-10-02", "CARTE 02/10 ACME STORE SOUTH", "-1", "Shopping"),
+        tx("a", "2026-10-03", "CARTE 03/10 ACME", "-1"),
+        tx("a", "2026-10-04", "PAYPAL *ACME STORE", "-1"),
+        tx("a", "2026-10-05", "CARTE 05/10 MONOPRIX", "-1"),
+        tx("a", "2026-10-06", "CARTE 06/10 BOLTS GYM", "-1"),
+        tx("a", "2026-10-07", "CARTE 07/10 BOLTS CAFE", "-1"),
+      ],
+      {
+        "acme store north": "health",
+        "acme store west": "health",
+        "acme outlet": "shopping",
+        monoprix: "groceries",
+        "bolts gym": "leisure",
+        "bolts bar": "restaurants",
+      },
+    );
+    expect(learned.map((t) => [t.key, t.origin, t.learnedFrom])).toEqual([
+      ["health", "yours", undefined],
+      ["health", "learned", "acme store north"],
+      ["health", "learned", "acme store north"],
+      ["health", "learned", "acme store north"],
+      ["groceries", "yours", undefined],
+      ["leisure", "yours", undefined],
+      // One rule each way for "bolts": nothing is learned from them.
+      ["other", "none", undefined],
+    ]);
+  });
+
+  it("doesn't learn from people's first names", () => {
+    const [mine, other, shop] = categorise(
+      [
+        tx("a", "2026-10-01", "VIR INST M ALEX SAMPLE", "-1"),
+        tx("a", "2026-10-02", "VIR INST M ALEX OTHER", "-1"),
+        tx("a", "2026-10-03", "CARTE 03/10 ALEX SALON", "-1"),
+      ],
+      { "alex sample": "gifts" },
+    );
+    expect([mine, other, shop].map((t) => [t!.key, t!.origin])).toEqual([
+      ["gifts", "yours"],
+      ["other", "none"],
+      ["other", "none"],
+    ]);
+  });
+
+  it("finds the word that names a payee", () => {
+    expect(leadWord("acme store north")).toBe("acme");
+    expect(leadWord("paypal acme")).toBe("acme");
+    expect(leadWord("sas la acme")).toBe("acme");
+    expect(leadWord("ab cd")).toBeNull();
   });
 
   it("pairs transfers between accounts within four days", () => {

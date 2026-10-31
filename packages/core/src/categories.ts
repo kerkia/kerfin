@@ -1,8 +1,8 @@
 // Spending categories: Kerfin's list, which the user can rename, extend and trim. A
 // transaction's category is, in this order: the one the user gave its payee; "transfers" when
-// it moves money between two of the user's accounts; Kerfin's rule for well-known merchants;
-// the bank's category, mapped onto Kerfin's; else "other". Banks' own categorisers err often,
-// and the user's corrections stick.
+// it moves money between two of the user's accounts; the one the user gave similar payees
+// (learned); Kerfin's rule for well-known merchants; the bank's category, mapped onto Kerfin's;
+// else "other". Banks' own categorisers err often, and the user's corrections stick.
 import { amount } from "./analytics";
 import type { AccountTransaction } from "./types";
 
@@ -58,12 +58,13 @@ export function withRequired(categories: CategoryDef[]): CategoryDef[] {
 }
 
 /** Where a transaction's category comes from. */
-export type CategoryOrigin = "yours" | "transfer" | "kerfin" | "bank" | "none";
+export type CategoryOrigin = "yours" | "transfer" | "learned" | "kerfin" | "bank" | "none";
 
 export interface Categorised extends AccountTransaction {
   key: string; // its category
   origin: CategoryOrigin;
   payeeKey: string;
+  learnedFrom?: string; // for a learned category, the payee the user gave it to
 }
 
 /** Lowercase, without accents or punctuation. */
@@ -138,6 +139,63 @@ const BANK_CATEGORIES: [RegExp, string][] = [
   [/cadeau|\bdons?\b|association|charit|gift/, "gifts"],
 ];
 
+// Words that don't tell payees apart: articles and such, legal forms, payment services,
+// honorifics, places.
+const GENERIC = new Set(
+  (
+    "the les des une aux chez sur par pour avec and for some our " +
+    "sas sarl eurl sci scp ste societe ets com www web online internet " +
+    "paypal sumup zettle stripe lydia payplug lyf adyen mollie square apple google " +
+    "mme mlle monsieur madame mr mrs " +
+    "achat facture avoir remboursement rembt cheque chq ech echeance pret retrait depot " +
+    "france paris lyon marseille"
+  ).split(" "),
+);
+
+/**
+ * The first word of a payee key that names the payee: "monop paris" and "monop neuilly" both
+ * give "monop", so a category the user gives one shop of a chain reaches its other shops.
+ */
+export function leadWord(payee: string): string | null {
+  return payee.split(" ").find((word) => word.length >= 3 && !GENERIC.has(word)) ?? null;
+}
+
+interface Learned {
+  key: string;
+  from: string; // the user's payee it comes from
+}
+
+/** A transfer's payee is a person, whose first name says nothing of other payees. */
+function fromPerson(transaction: { label: string }): boolean {
+  return /^(vir|virement)\b/.test(plain(transaction.label));
+}
+
+/**
+ * What the user's rules teach about other payees: per lead word, the category most rules with
+ * that word give. A tie (one chain, two uses) teaches nothing.
+ */
+function learn(
+  rules: Record<string, string>,
+  known: ReadonlySet<string>,
+  people: ReadonlySet<string>,
+): Map<string, Learned | null> {
+  const votes = new Map<string, Map<string, string[]>>(); // word -> category -> payees
+  for (const [payee, key] of Object.entries(rules)) {
+    const word = leadWord(payee);
+    if (!word || !known.has(key) || people.has(payee)) continue;
+    const byKey = votes.get(word) ?? new Map<string, string[]>();
+    byKey.set(key, [...(byKey.get(key) ?? []), payee]);
+    votes.set(word, byKey);
+  }
+  const learned = new Map<string, Learned | null>();
+  for (const [word, byKey] of votes) {
+    const ranked = [...byKey].sort((a, b) => b[1].length - a[1].length);
+    const [best, next] = ranked;
+    learned.set(word, next && next[1].length === best![1].length ? null : { key: best![0], from: best![1][0]! });
+  }
+  return learned;
+}
+
 function first(rules: [RegExp, string][], text: string, known: ReadonlySet<string>): string | null {
   return rules.find(([pattern, key]) => known.has(key) && pattern.test(text))?.[1] ?? null;
 }
@@ -173,7 +231,8 @@ export function transferPairs(transactions: AccountTransaction[]): Set<number> {
 
 /**
  * Each transaction with its category among `categories`, the user's `rules` (payee key ->
- * category) first. A category no longer in the list falls back to the next source.
+ * category) first, then what they teach about similar payees. A category no longer in the
+ * list falls back to the next source.
  */
 export function categorise(
   transactions: AccountTransaction[],
@@ -182,11 +241,17 @@ export function categorise(
 ): Categorised[] {
   const known = new Set(categories.map((c) => c.key));
   const transfers = transferPairs(transactions);
+  const keys = transactions.map(payeeKey);
+  const people = new Set(keys.filter((_, i) => fromPerson(transactions[i]!)));
+  const learned = learn(rules, known, people);
   return transactions.map((tx, i) => {
-    const key = payeeKey(tx);
+    const key = keys[i]!;
     const yours = rules[key];
     if (yours && known.has(yours)) return { ...tx, key: yours, origin: "yours", payeeKey: key };
     if (transfers.has(i)) return { ...tx, key: TRANSFERS, origin: "transfer", payeeKey: key };
+    const word = people.has(key) ? null : leadWord(key);
+    const similar = word ? learned.get(word) : null;
+    if (similar) return { ...tx, key: similar.key, origin: "learned", payeeKey: key, learnedFrom: similar.from };
     const merchant = first(MERCHANTS, `${key} ${plain(tx.label)}`, known);
     if (merchant) return { ...tx, key: merchant, origin: "kerfin", payeeKey: key };
     const bank = first(BANK_CATEGORIES, plain(`${tx.category_parent ?? ""} ${tx.category ?? ""}`), known);

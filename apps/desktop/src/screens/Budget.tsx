@@ -581,7 +581,12 @@ export function BudgetPage() {
                           ))}
                         <option value={EDIT}>{t("budget.editCategoriesOption")}</option>
                       </select>{" "}
-                      <span className="muted small">{t(`budget.origin.${tx.origin}`)}</span>
+                      <span
+                        className="muted small"
+                        title={tx.learnedFrom ? t("budget.learnedFrom", { payee: tx.learnedFrom }) : undefined}
+                      >
+                        {t(`budget.origin.${tx.origin}`)}
+                      </span>
                     </td>
                     <td className={`right num ${left || signed === 0 ? "" : signed > 0 ? "delta-up" : "delta-down"}`}>
                       {money(signed, tx.currency ?? "EUR", { signDisplay: "exceptZero" })}

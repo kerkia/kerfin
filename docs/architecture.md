@@ -182,10 +182,16 @@ leave it out until the user restores the connection's removed accounts.
 
 `packages/core/src/categories.ts` gives each transaction a category of Kerfin's own, in
 this order: the user's category for its payee; "transfers" for money moving between two of
-the user's accounts (the same amount out of one and into another within four days); Kerfin's
-rules for well-known merchants; the bank's category mapped onto Kerfin's; else "other". The
-payee is the bank's cleaned-up merchant name, else the label without card prefixes, dates and
-references. Changing a transaction's category sets it for its payee, so the correction sticks.
+the user's accounts (the same amount out of one and into another within four days); a
+category learned from the user's choices; Kerfin's rules for well-known merchants; the bank's
+category mapped onto Kerfin's; else "other". The payee is the bank's cleaned-up merchant name,
+else the label without card prefixes, dates and references. Changing a transaction's category
+sets it for its payee, past transactions included, so the correction sticks. Kerfin also learns
+from these choices: payees whose first naming word matches (skipping articles, legal forms,
+payment services such as PayPal, and the like) take the category most of the user's choices
+for that word give, as "monop paris" teaches "monop neuilly"; a tie teaches nothing, and
+transfers to people are left out, since a first name says nothing of other payees. Learned
+categories are computed on the fly, never stored, so they follow every new choice.
 The user can rename, add and remove categories and say what each counts as (spending, income,
 not counted); "transfers", "ignored" (left out of the budget altogether) and "other" can only
 be renamed.
