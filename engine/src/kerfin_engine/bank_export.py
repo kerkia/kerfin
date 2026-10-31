@@ -8,6 +8,15 @@ those it aggregates (other banks, cards). Its header, as exported in 2026-10:
 
 "Solde" appears twice: the first is the transaction's amount, the second the account's
 balance after it. Older exports name the amount "Montant" ("amount" in English ones).
+
+American Express's export (comma-separated) covers a card account. With "toutes les
+informations complémentaires", its header, as exported in 2026-10, is:
+
+    Date,Description,Titulaire,Numéro de Compte,Montant,Détails,
+    Apparait sur votre relevé de compte sous,Adresse,Ville,Code postal,Pays,Référence,Catégorie
+
+Its dates are month first (10/28/2026), its charges positive, and its account numbers are
+each card holder's card: the cards, billed together, make one account.
 """
 
 from __future__ import annotations
@@ -34,6 +43,7 @@ class ExportAccount:
     label: str
     balance: Decimal | None = None  # after the latest transaction, when the file says
     transactions: list[Transaction] = field(default_factory=list)
+    amex: bool = False  # from American Express's export, else BoursoBank's
 
 
 def _key(name: str) -> str:
@@ -42,15 +52,16 @@ def _key(name: str) -> str:
     return re.sub(r"[^a-z]", "", "".join(c for c in decomposed if not unicodedata.combining(c)))
 
 
-# Column names, loosely compared, as BoursoBank's French and English exports give them.
+# Column names, loosely compared, as BoursoBank's and American Express's French and English
+# exports give them.
 _COLUMNS = {
-    "date": ("dateoperation", "dateop"),
-    "label": ("libelle", "label"),
+    "date": ("dateoperation", "dateop", "date"),
+    "label": ("libelle", "label", "description"),
     "payee": ("libellesuggere", "supplierfound"),
     "category": ("categorie", "category"),
     "parent": ("categorieparente", "categoryparent"),
     "amount": ("montant", "amount"),
-    "number": ("numerocompte", "accountnum"),
+    "number": ("numerocompte", "accountnum", "numerodecompte", "account"),
     "account": ("libellecompte", "accountlabel"),
     "balance": ("soldecompte", "accountbalance"),
 }
@@ -66,19 +77,22 @@ def _text(data: bytes) -> str:
 
 
 def _amount(value: str) -> Decimal | None:
-    """French or plain amounts: "-1 234,56", "1234.56", "−12,50 €"."""
+    """French or plain amounts: "-1 234,56", "1234.56", "1,234.56", "−12,50 €"."""
     text = re.sub(r"[\s  €]", "", value).replace("−", "-")
-    if "," in text:
+    if text.rfind(",") > text.rfind("."):
         text = text.replace(".", "").replace(",", ".")
+    else:
+        text = text.replace(",", "")
     try:
         return Decimal(text) if text else None
     except InvalidOperation:
         return None
 
 
-def _date(value: str) -> date | None:
+def _date(value: str, month_first: bool = False) -> date | None:
     value = value.strip()
-    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%d-%m-%Y"):
+    slashed = ("%m/%d/%Y", "%m/%d/%y") if month_first else ("%d/%m/%Y", "%d/%m/%y")
+    for pattern in ("%Y-%m-%d", *slashed, "%d-%m-%Y"):
         try:
             return datetime.strptime(value, pattern).date()
         except ValueError:
@@ -107,11 +121,15 @@ def _columns(header: list[str]) -> dict[str, int]:
 
 def read(data: bytes) -> list[ExportAccount]:
     """The accounts in an export, each with its transactions, newest first."""
-    rows = list(csv.reader(io.StringIO(_text(data)), delimiter=";"))
+    text = _text(data)
+    header = text.partition("\n")[0]
+    delimiter = ";" if header.count(";") >= header.count(",") else ","
+    rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
     rows = [row for row in rows if any(cell.strip() for cell in row)]
     if not rows:
         raise ExportError("empty_file")
     columns = _columns(rows[0])
+    amex = "description" in (_key(name) for name in rows[0])
 
     def cell(row: list[str], name: str) -> str:
         index = columns.get(name)
@@ -119,11 +137,19 @@ def read(data: bytes) -> list[ExportAccount]:
 
     accounts: dict[str, ExportAccount] = {}
     latest: dict[str, date] = {}
+    cards = set()
     for row in rows[1:]:
-        day, amount = _date(cell(row, "date")), _amount(cell(row, "amount"))
+        day, amount = _date(cell(row, "date"), month_first=amex), _amount(cell(row, "amount"))
         if day is None or amount is None:
             continue
-        number = cell(row, "number")
+        category, parent = cell(row, "category"), cell(row, "parent")
+        if amex:
+            cards.add(cell(row, "number"))
+            amount = -amount
+            # One column for both levels: "Merchandise & Supplies-Groceries".
+            if "-" in category:
+                parent, _, category = category.partition("-")
+        number = "" if amex else cell(row, "number")
         account = accounts.setdefault(number, ExportAccount(number, cell(row, "account") or number))
         account.transactions.append(
             Transaction(
@@ -131,8 +157,8 @@ def read(data: bytes) -> list[ExportAccount]:
                 label=" ".join(cell(row, "label").split()) or "?",
                 amount=amount,
                 currency="EUR",
-                category=cell(row, "category") or None,
-                category_parent=cell(row, "parent") or None,
+                category=category or None,
+                category_parent=parent or None,
                 payee=cell(row, "payee") or None,
             )
         )
@@ -142,6 +168,11 @@ def read(data: bytes) -> list[ExportAccount]:
             account.balance, latest[number] = balance, day
     if not accounts:
         raise ExportError("no_transactions")
+    if amex:
+        # Named by its cards, so that the next import goes where this one went.
+        account = accounts[""]
+        account.number = " ".join(sorted(card for card in cards if card)) or "amex"
+        account.label, account.amex = "American Express", True
     for account in accounts.values():
         account.transactions.sort(key=lambda t: t.date, reverse=True)
     return list(accounts.values())
@@ -167,13 +198,16 @@ def _plain(text: str) -> str:
 
 def target(store: Store, account: ExportAccount) -> str | None:
     """The account an export's account goes to: where it went last time, else the account
-    with the same name; None for a new one."""
+    with the same name, else, for American Express's export, its only card there (as
+    BoursoBank's export may have brought it); None for a new one."""
     accounts = store.accounts()
     remembered = store.setting(_REMEMBERED + account.number, "") if account.number else ""
     if any(a["id"] == remembered for a in accounts):
         return remembered
     name = _plain(account.label)
     same = [a for a in accounts if name and _plain(a["label"]) == name]
+    if not same and account.amex:
+        same = [a for a in accounts if a["kind"] == "card" and a["institution_name"] == "American Express"]
     return same[0]["id"] if len(same) == 1 else None
 
 
@@ -208,6 +242,8 @@ def save(
     "skip"); a new account takes the name, kind and institution `new_accounts` gives, else
     the file's name and guesses. Returns how many transactions were imported."""
     known = {a["id"]: a for a in store.accounts()}
+    # Imported together into each account: two of the file's going to one mustn't replace each other's.
+    imports: dict[str, list[Transaction]] = {}
     count = 0
     for account in accounts:
         chosen = targets.get(account.number, "skip")
@@ -229,8 +265,10 @@ def save(
                 store.set_manual_balance(account_id, account.balance)
         else:
             raise KeyError(chosen)
-        store.import_transactions(account_id, account.transactions)
+        imports.setdefault(account_id, []).extend(account.transactions)
         if account.number:
             store.set_setting(_REMEMBERED + account.number, account_id)
         count += len(account.transactions)
+    for account_id, transactions in imports.items():
+        store.import_transactions(account_id, transactions)
     return count

@@ -53,6 +53,70 @@ def test_windows_encoded_exports_are_read() -> None:
     assert current.transactions[0].category == "Supermarché"
 
 
+AMEX_HEADER = (
+    "Date,Description,Titulaire,Numéro de Compte,Montant,Détails,"
+    "Apparait sur votre relevé de compte sous,Adresse,Ville,Code postal,Pays,Référence,Catégorie"
+)
+# Made-up lines in American Express's 2026 layout: two cards, charges positive, month first.
+AMEX_LINES = [
+    '10/27/2026,SOME BAKERY        SOMEWHERE,A SAMPLE,-11111,"4,20",,SOME BAKERY        SOMEWHERE,'
+    "\"1 SOME STREET\nSOMEWHERE\",,99999,FRANCE,'AT000000000000000000001',Miscellaneous-Other",
+    "10/13/2026,PAIEMENT RECU - MERCI,A SAMPLE,-11111,\"-1234,56\",,PAIEMENT RECU - MERCI,,,,,'000002',",
+    "09/30/2026,SOME AIRLINE,B SAMPLE,-22222,\"1 234,00\",,SOME AIRLINE,,,,,'AT000000000000000000003',"
+    "Travel-Airline",
+]
+
+
+def test_amex_export_is_read_as_one_card_account() -> None:
+    [card] = bank_export.read("\n".join([AMEX_HEADER, *AMEX_LINES]).encode())
+
+    assert (card.number, card.label, card.amex, card.balance) == (
+        "-11111 -22222",
+        "American Express",
+        True,
+        None,
+    )
+    assert (bank_export.kind(card), bank_export.institution(card)) == (AccountKind.CARD, "American Express")
+    bakery, payment, airline = card.transactions
+    assert (bakery.date, bakery.label, bakery.amount) == (
+        date(2026, 10, 27),
+        "SOME BAKERY SOMEWHERE",
+        Decimal("-4.20"),
+    )
+    assert payment.amount == Decimal("1234.56") and payment.category is None
+    assert (airline.amount, airline.category_parent, airline.category) == (
+        Decimal("-1234.00"),
+        "Travel",
+        "Airline",
+    )
+
+
+def test_amex_import_goes_to_the_card_boursobank_brought() -> None:
+    store = Store.create()
+    [current, card] = bank_export.read(export(*LINES))
+    bank_export.save(store, [current, card], {current.number: "new", card.number: "new"})
+    [amex] = bank_export.read("\n".join([AMEX_HEADER, *AMEX_LINES]).encode())
+
+    brought = next(a["id"] for a in store.accounts() if a["label"] == "Carte Amex")
+    assert bank_export.target(store, amex) == brought
+
+
+def test_two_accounts_imported_into_one_keep_each_others() -> None:
+    store = Store.create()
+    account = store.add_manual_account("BoursoBank", "Compte", AccountKind.CHECKING, Decimal("1"), "EUR")
+    same_day = '2026-10-28;2026-10-28;"SOME SHOP";;"Some Shop";;;-9,00;;99999;"Carte Amex";-319,00;0'
+    current, card = bank_export.read(export(*LINES, same_day))
+    assert bank_export.save(store, [current, card], {current.number: account, card.number: account}) == 4
+    assert len(store.transactions(account)) == 4
+
+
+def test_amounts_with_thousands_separators() -> None:
+    assert bank_export._amount("1,234.56") == Decimal("1234.56")
+    assert bank_export._amount("-1 234,56") == Decimal("-1234.56")
+    assert bank_export._amount("1.234,56") == Decimal("1234.56")
+    assert bank_export._amount("12.50") == Decimal("12.50")
+
+
 def test_files_that_are_no_export_are_refused() -> None:
     with pytest.raises(bank_export.ExportError):
         bank_export.read(b"name,value\nfoo,1\n")

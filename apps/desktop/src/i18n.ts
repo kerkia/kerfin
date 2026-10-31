@@ -185,8 +185,8 @@ const en = {
   "budget.resetCategory": "Back to Kerfin's choice",
   "import.title": "Import transactions into {account}",
   "import.help":
-    "Choose a CSV export from BoursoBank (Mes comptes › Exporter), which also lists the accounts BoursoBank aggregates. Leave \"inclure les documents\" unchecked.",
-  "import.unreadable": "This file isn't a BoursoBank CSV export Kerfin can read.",
+    "Choose a CSV export from BoursoBank (Mes comptes › Exporter), which also lists the accounts BoursoBank aggregates (leave \"inclure les documents\" unchecked), or a CSV from American Express.",
+  "import.unreadable": "This file isn't a BoursoBank or American Express CSV export Kerfin can read.",
   "import.failed": "The import failed. Try again, or export the file again.",
   "import.which": "Which account in the file is {account}?",
   "import.choose": "Choose…",
