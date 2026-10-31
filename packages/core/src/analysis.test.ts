@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projection, spendingAnalysis, trendAt, trendStats } from "./analysis";
+import { addPoints, pointsBetween, projection, spendingAnalysis, trendAt, trendStats, weekOf } from "./analysis";
 import type { AccountTransaction } from "./types";
 
 function tx(account_id: string, date: string, label: string, amount: string, category: string | null = null): AccountTransaction {
@@ -31,7 +31,7 @@ describe("spendingAnalysis", () => {
 
   it("adds the complete months' spending, refunds lowering it, transfers and income aside", () => {
     const result = spendingAnalysis(TRANSACTIONS, { ...options, split: "total" });
-    expect(result.months).toEqual(["2026-08", "2026-09"]);
+    expect(result.points).toEqual(["2026-08", "2026-09"]);
     expect(result.series).toEqual([{ key: "total", values: [1000, 1060] }]);
   });
 
@@ -63,7 +63,41 @@ describe("spendingAnalysis", () => {
 
   it("leaves out a month the range covers only in part", () => {
     const result = spendingAnalysis(TRANSACTIONS, { ...options, range: { from: "2026-08-15", to: "2026-10-29" }, split: "total" });
-    expect(result.months).toEqual(["2026-09"]);
+    expect(result.points).toEqual(["2026-09"]);
+  });
+
+  it("counts by week, Monday to Sunday, over the weeks the range covers whole and that are over", () => {
+    const result = spendingAnalysis(TRANSACTIONS, { ...options, split: "total", step: "week" });
+    expect(result.points).toEqual([
+      "2026-08-03",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-24",
+      "2026-08-31",
+      "2026-09-07",
+      "2026-09-14",
+      "2026-09-21",
+      "2026-09-28",
+      "2026-10-05",
+      "2026-10-12",
+      "2026-10-19",
+    ]);
+    // The rent of Saturday 3 October falls in the week of 28 September, which is over.
+    expect(result.series).toEqual([{ key: "total", values: [900, 100, 0, 0, 900, 130, 30, 0, 900, 0, 0, 0] }]);
+  });
+});
+
+describe("weeks", () => {
+  it("finds a date's Monday and moves by points", () => {
+    expect(weekOf("2026-10-29")).toBe("2026-10-26");
+    expect(weekOf("2026-10-26")).toBe("2026-10-26");
+    expect(weekOf("2026-11-01")).toBe("2026-10-26");
+    expect(addPoints("2026-12-28", "week", 1)).toBe("2027-01-04");
+    expect(addPoints("2026-12", "month", 1)).toBe("2027-01");
+  });
+
+  it("leaves out a week the range ends in", () => {
+    expect(pointsBetween("2026-10-01", "2026-10-24", "2026-10-31", "week")).toEqual(["2026-10-05", "2026-10-12"]);
   });
 });
 
@@ -81,6 +115,7 @@ describe("trendStats", () => {
     expect(stats.r2).toBeCloseTo(0.7, 6);
     expect(stats.yearly).toBeCloseTo(1.4, 6);
     expect(stats.residual).toBeCloseTo(Math.sqrt(420 / 2), 6);
+    expect(trendStats([100, 120, 110, 150], 52).yearly).toBeCloseTo((14 * 52) / 120, 6);
   });
 
   it("projects the trend, never below zero", () => {

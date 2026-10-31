@@ -163,13 +163,14 @@ account entered by hand takes the file's balance.
 The Budget page filters by accounts, categories and payees (tables whose unticked rows are
 left out), each table showing its figures
 for what the other two keep (`budget()` takes the filter). Income and savings follow the
-accounts only. Its analysis (`packages/core/src/analysis.ts`) charts spending a month, as a
-total or by category or account, over the period's complete months only. Each line gets its
+accounts only. Its analysis (`packages/core/src/analysis.ts`) charts spending a month or a
+week (Monday to Sunday; by default, weeks over periods up to six months), as a total or by
+category or account, over the period's complete months or weeks only. Each line gets its
 average, standard deviation (and variation, relative to the average), the least-squares
 trend with its R², and the trend continued over the months ahead (none, or 3 to 24, picked
 on the chart); the chart draws the total's, with a band of one standard deviation of the
-months around the trend, or each line's own projection when split. A trend needs three
-complete months.
+points around the trend, or each line's own projection when split. A trend needs three
+complete points.
 
 An account a connection brings in (Finary's) can be removed: its data goes, and later syncs
 leave it out until the user restores the connection's removed accounts.

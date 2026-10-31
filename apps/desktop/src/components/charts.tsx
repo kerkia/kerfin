@@ -301,21 +301,21 @@ export interface TrendSeries {
   key: string;
   label: string;
   color: string; // a CSS color, e.g. var(--series-1)
-  values: number[]; // one per month
-  projected?: number[]; // the line's trend from the last month on: one more than `ahead`
+  values: number[]; // one per point
+  projected?: number[]; // the line's trend from the last point on: one more than `ahead`
 }
 
 const TREND_HEIGHT = 260;
 const TREND_PAD = { top: 14, right: 16, bottom: 26, left: 56 };
 
 /**
- * Lines over months, on a zero baseline, with a legend, a crosshair and a tooltip per month.
- * With `trend`, a dashed trend line runs through the months and on over `ahead` (months to
- * come), where a band shows the range the months fell in around the trend; a line with
+ * Lines over months or weeks, on a zero baseline, with a legend, a crosshair and a tooltip each.
+ * With `trend`, a dashed trend line runs through the points and on over `ahead` (points to
+ * come), where a band shows the range the points fell in around the trend; a line with
  * `projected` goes on dashed over `ahead` instead.
  */
 export function TrendChart({
-  months,
+  points,
   ahead = [],
   series,
   trend,
@@ -323,11 +323,11 @@ export function TrendChart({
   label,
   title,
 }: {
-  months: string[];
+  points: string[]; // months or weeks, oldest first
   ahead?: string[];
   series: TrendSeries[];
-  trend?: { values: number[]; band: number; label: string }; // values: months, then ahead
-  projectionLabel: string; // for the months ahead
+  trend?: { values: number[]; band: number; label: string }; // values: points, then ahead
+  projectionLabel: string; // for the points ahead
   label: (month: string) => string; // under the axis
   title: (month: string) => string; // in the tooltip
 }) {
@@ -343,9 +343,9 @@ export function TrendChart({
     return () => observer.disconnect();
   }, []);
 
-  const all = [...months, ...ahead];
+  const all = [...points, ...ahead];
   const count = all.length;
-  // A month hovered may be gone when the months change.
+  // A point hovered may be gone when the points change.
   const hover = hovered !== null && hovered < count ? hovered : null;
   const highs = [...series.flatMap((s) => s.values), ...(trend ? trend.values.map((v) => v + trend.band) : [])];
   const ticks = niceTicks(0, Math.max(...highs, 1));
@@ -355,9 +355,10 @@ export function TrendChart({
   const x = (i: number) => TREND_PAD.left + (count > 1 ? (i / (count - 1)) * innerW : innerW / 2);
   const y = (value: number) => TREND_PAD.top + innerH - (Math.max(value, 0) / yMax) * innerH;
   const path = (values: number[], offset = 0) => values.map((v, i) => `${i ? "L" : "M"}${x(i + offset)},${y(v)}`).join("");
-  // About eight month names fit under the axis.
-  const step = Math.max(1, Math.ceil(count / Math.max(Math.floor(innerW / 64), 2)));
-  const last = months.length - 1;
+  // As many names under the axis as fit, at about 7px a character.
+  const room = Math.max(...all.map((point) => label(point).length), 3) * 7 + 16;
+  const step = Math.max(1, Math.ceil(count / Math.max(Math.floor(innerW / room), 2)));
+  const last = points.length - 1;
 
   let band = "";
   if (trend && ahead.length) {
@@ -417,7 +418,7 @@ export function TrendChart({
           onMouseLeave={() => setHover(null)}
           role="img"
           aria-label={series
-            .map((s) => `${s.label}: ${s.values.map((v, i) => `${title(months[i]!)} ${money(v)}`).join(", ")}`)
+            .map((s) => `${s.label}: ${s.values.map((v, i) => `${title(points[i]!)} ${money(v)}`).join(", ")}`)
             .join("; ")}
         >
           {ticks.map((tick) => (

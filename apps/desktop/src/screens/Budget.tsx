@@ -4,7 +4,8 @@
 // transaction's category, changed here, applies to its payee.
 import {
   DEFAULT_CATEGORIES,
-  addMonths,
+  PER_YEAR,
+  addPoints,
   amount,
   budget,
   lastMonths,
@@ -14,7 +15,7 @@ import {
   trendStats,
   withRequired,
 } from "@kerfin/core";
-import type { AccountTransaction, Categorised, CategoryDef, Flow, SplitBy, TransactionsNotice, TrendStats } from "@kerfin/core";
+import type { AccountTransaction, Categorised, CategoryDef, Flow, SplitBy, Step, TransactionsNotice, TrendStats } from "@kerfin/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
@@ -24,15 +25,17 @@ import { TrendChart } from "../components/charts";
 import type { TrendSeries } from "../components/charts";
 import { useData } from "../data";
 import { engine } from "../engine";
-import { categoryName, longDate, money, monthName, percent, t } from "../i18n";
+import { categoryName, longDate, money, monthName, percent, shortDate, t } from "../i18n";
 
 const PAGE = 100;
 const EDIT = "__edit"; // the category picker's entry that opens the category editor
 const SPLITS = ["total", "category", "account"] as const;
 const AHEAD = ["0", "3", "6", "12", "24"] as const; // months projected; 0 for none
+const EVERY = ["auto", "week", "month"] as const; // a point a week or a month; auto: by the period
+const WEEKLY_UP_TO = 186; // days: auto draws a point a week over periods up to about six months
 const COLORS = 6; // named lines; the rest fold into "Other"
 const OTHER = "__other";
-const MIN_MONTHS = 3; // for a trend worth showing
+const MIN_POINTS = 3; // for a trend worth showing
 
 type SortKey = "date" | "label" | "account" | "category" | "amount";
 type FlowKey = "name" | "count" | "in" | "out";
@@ -66,6 +69,7 @@ export function BudgetPage() {
   const [custom, setCustom] = useState(() => lastMonths(today, 3));
   const [split, setSplit] = useState<SplitBy>(() => stored("kerfin.budgetSplit", SPLITS, "total"));
   const [ahead, setAhead] = useState(() => stored("kerfin.budgetAhead", AHEAD, "6"));
+  const [every, setEvery] = useState(() => stored("kerfin.budgetEvery", EVERY, "auto"));
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "date", descending: true });
   const [shown, setShown] = useState(PAGE);
 
@@ -106,6 +110,8 @@ export function BudgetPage() {
   );
   const range = rangeOf(preset, today, custom, first);
   const validRange = range.from <= range.to;
+  const step: Step =
+    every !== "auto" ? every : (Date.parse(range.to) - Date.parse(range.from)) / 86_400_000 <= WEEKLY_UP_TO ? "week" : "month";
 
   // Each list at the top is filtered by the other two, not by itself, so that more can be picked.
   const figures = useMemo(() => {
@@ -127,12 +133,13 @@ export function BudgetPage() {
         range,
         today,
         split,
+        step,
         rules,
         categories,
       }),
     };
     // The range by its dates: rangeOf gives a new object each render.
-  }, [transactions, accounts, unselected, categoriesOut, payeesOut, range.from, range.to, today, rules, categories, split, validRange]);
+  }, [transactions, accounts, unselected, categoriesOut, payeesOut, range.from, range.to, today, rules, categories, split, step, validRange]);
 
   const dialogs = <CategoryEditor open={editing} categories={categories} onClose={() => setEditing(false)} onSaved={load} />;
   const actions = (
@@ -209,13 +216,13 @@ export function BudgetPage() {
 
   // The chart's lines: the largest named, in the list's order so a line keeps its color as
   // others come and go; the rest added up as "Other".
-  const { months } = analysis;
+  const { points } = analysis;
   const ranked = analysis.series;
   const order = split === "account" ? accounts.map((a) => a.id) : categories.map((c) => c.key);
   const named = new Set(ranked.slice(0, ranked.length > COLORS ? COLORS - 1 : COLORS).map((s) => s.key));
   const lines = split === "total" ? [...ranked] : order.flatMap((key) => ranked.filter((s) => s.key === key && named.has(key)));
   const rest = ranked.filter((s) => !named.has(s.key));
-  if (rest.length) lines.push({ key: OTHER, values: months.map((_, i) => rest.reduce((sum, s) => sum + s.values[i]!, 0)) });
+  if (rest.length) lines.push({ key: OTHER, values: points.map((_, i) => rest.reduce((sum, s) => sum + s.values[i]!, 0)) });
   const lineName = (key: string) =>
     key === "total"
       ? t("analysis.total")
@@ -224,18 +231,23 @@ export function BudgetPage() {
         : split === "account"
           ? (labels.get(key) ?? key)
           : nameOf(key);
-  const total = trendStats(months.map((_, i) => ranked.reduce((sum, s) => sum + s.values[i]!, 0)));
-  const count = Number(ahead);
-  const enough = months.length >= MIN_MONTHS;
+  const perYear = PER_YEAR[step];
+  const total = trendStats(
+    points.map((_, i) => ranked.reduce((sum, s) => sum + s.values[i]!, 0)),
+    perYear,
+  );
+  const aheadMonths = Number(ahead);
+  const count = Math.round((aheadMonths * perYear) / 12); // points projected
+  const enough = points.length >= MIN_POINTS;
   const projecting = enough && count > 0;
-  const future = projecting ? Array.from({ length: count }, (_, i) => addMonths(months[months.length - 1]!, i + 1)) : [];
+  const future = projecting ? Array.from({ length: count }, (_, i) => addPoints(points[points.length - 1]!, step, i + 1)) : [];
   const projected = projection(total, count);
   const projectedSum = projected.reduce((sum, v) => sum + v, 0);
   // The total is drawn with its trend; split, each line goes on with its own projection, from
-  // its trend at the last month.
+  // its trend at the last point.
   const onwards = (values: number[]) => {
-    const stats = trendStats(values);
-    return [trendAt(stats, months.length - 1), ...projection(stats, count)];
+    const stats = trendStats(values, perYear);
+    return [trendAt(stats, points.length - 1), ...projection(stats, count)];
   };
   const chartSeries: TrendSeries[] = lines.map((line, i) => ({
     key: line.key,
@@ -245,7 +257,11 @@ export function BudgetPage() {
     projected: projecting && split !== "total" ? onwards(line.values) : undefined,
   }));
   // Over more than a year, the axis names the years too.
-  const longRange = months.length + future.length > 12;
+  const longRange = points.length + future.length > perYear;
+  const pointLabel = (point: string) =>
+    step === "month" ? monthName(point, longRange) : longRange ? longDate(point) : shortDate(point);
+  const pointTitle = (point: string) =>
+    step === "month" ? monthName(point, true) : t("analysis.weekOf", { date: longDate(point) });
   const aheadPicker = (
     <label className="inline-label">
       {t("analysis.ahead")}
@@ -260,6 +276,25 @@ export function BudgetPage() {
         {AHEAD.map((n) => (
           <option key={n} value={n}>
             {n === "0" ? t("analysis.aheadNone") : t("analysis.aheadMonths", { n })}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  const everyPicker = (
+    <label className="inline-label">
+      {t("analysis.every")}
+      <select
+        className="input compact"
+        value={every}
+        onChange={(e) => {
+          setEvery(e.target.value as (typeof EVERY)[number]);
+          remember("kerfin.budgetEvery", e.target.value);
+        }}
+      >
+        {EVERY.map((option) => (
+          <option key={option} value={option}>
+            {t(`analysis.every.${option}`)}
           </option>
         ))}
       </select>
@@ -371,33 +406,33 @@ export function BudgetPage() {
         />
         <Kpi
           label={t("analysis.trend")}
-          value={enough ? t("analysis.perMonth", { amount: change(total.slope) }) : "–"}
+          value={enough ? t(`analysis.per.${step}`, { amount: change(total.slope) }) : "–"}
           detail={
             enough
-              ? t("analysis.trendDetail", { rate: percent(total.yearly, true), r2: total.r2.toFixed(2) })
-              : t("analysis.tooFew", { n: MIN_MONTHS })
+              ? t(`analysis.trendDetail.${step}`, { rate: percent(total.yearly, true), r2: total.r2.toFixed(2) })
+              : t(`analysis.tooFew.${step}`, { n: MIN_POINTS })
           }
         />
         <Kpi
           label={t("analysis.spread")}
-          value={months.length ? whole(total.stdev) : "–"}
+          value={points.length ? whole(total.stdev) : "–"}
           detail={
-            months.length
-              ? t("analysis.spreadDetail", { cv: percent(total.cv), min: whole(total.min), max: whole(total.max) })
-              : t("analysis.tooFew", { n: 1 })
+            points.length
+              ? t(`analysis.spreadDetail.${step}`, { cv: percent(total.cv), min: whole(total.min), max: whole(total.max) })
+              : t(`analysis.tooFew.${step}`, { n: 1 })
           }
         />
         {count > 0 && (
           <Kpi
-            label={t("analysis.projected", { n: count })}
+            label={t("analysis.projected", { n: aheadMonths })}
             value={projecting ? whole(projectedSum) : "–"}
             detail={
               projecting
-                ? t("analysis.projectedDetail", {
+                ? t(`analysis.projectedDetail.${step}`, {
                     amount: whole(projected[projected.length - 1]!),
-                    month: monthName(future[future.length - 1]!, true),
+                    when: step === "month" ? monthName(future[future.length - 1]!, true) : longDate(future[future.length - 1]!),
                   })
-                : t("analysis.tooFew", { n: MIN_MONTHS })
+                : t(`analysis.tooFew.${step}`, { n: MIN_POINTS })
             }
           />
         )}
@@ -408,6 +443,7 @@ export function BudgetPage() {
           <div className="card-header">
             <h2>{t("analysis.overTime")}</h2>
             <div className="row" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {everyPicker}
               {aheadPicker}
               <div className="segmented" role="radiogroup" aria-label={t("analysis.split")}>
                 {SPLITS.map((by) => (
@@ -427,9 +463,9 @@ export function BudgetPage() {
               </div>
             </div>
           </div>
-          {months.length === 0 ? (
+          {points.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>
-              {t("analysis.noMonths")}
+              {t(`analysis.none.${step}`)}
             </p>
           ) : chartSeries.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>
@@ -437,25 +473,25 @@ export function BudgetPage() {
             </p>
           ) : (
             <TrendChart
-              months={months}
+              points={points}
               ahead={future}
               series={chartSeries}
               trend={
                 enough && split === "total"
                   ? {
-                      values: [...months.map((_, i) => trendAt(total, i)), ...(projecting ? projected : [])],
+                      values: [...points.map((_, i) => trendAt(total, i)), ...(projecting ? projected : [])],
                       band: total.residual,
                       label: t("analysis.trendLine"),
                     }
                   : undefined
               }
-              projectionLabel={t("analysis.projectionMonths", { n: count })}
-              label={(m) => monthName(m, longRange)}
-              title={(m) => monthName(m, true)}
+              projectionLabel={t("analysis.projectionMonths", { n: aheadMonths })}
+              label={pointLabel}
+              title={pointTitle}
             />
           )}
           <p className="muted small" style={{ margin: "10px 0 0" }}>
-            {!enough && months.length > 0 && `${t("analysis.needMore", { n: MIN_MONTHS, have: months.length })} `}
+            {!enough && points.length > 0 && `${t(`analysis.needMore.${step}`, { n: MIN_POINTS, have: points.length })} `}
             {t(split === "total" ? "analysis.chartHelp" : "analysis.chartHelpSplit")}
           </p>
         </section>
@@ -470,19 +506,19 @@ export function BudgetPage() {
                 <tr>
                   <th>{t(`analysis.split.${split}`)}</th>
                   <th className="right">{t("analysis.col.total")}</th>
-                  <th className="right">{t("analysis.col.average")}</th>
+                  <th className="right">{t(`analysis.col.average.${step}`)}</th>
                   <th className="right">{t("analysis.col.stdev")}</th>
                   <th className="right">{t("analysis.col.cv")}</th>
-                  <th className="right">{t("analysis.col.range")}</th>
-                  <th className="right">{t("analysis.col.trend")}</th>
+                  <th className="right">{t(`analysis.col.range.${step}`)}</th>
+                  <th className="right">{t(`analysis.col.trend.${step}`)}</th>
                   <th className="right">{t("analysis.col.yearly")}</th>
                   <th className="right">{t("analysis.col.r2")}</th>
-                  {count > 0 && <th className="right">{t("analysis.col.projected", { n: count })}</th>}
+                  {count > 0 && <th className="right">{t("analysis.col.projected", { n: aheadMonths })}</th>}
                 </tr>
               </thead>
               <tbody>
                 {(split === "total" ? [] : ranked).map((s) => (
-                  <StatsRow key={s.key} name={lineName(s.key)} stats={trendStats(s.values)} ahead={count} enough={enough} />
+                  <StatsRow key={s.key} name={lineName(s.key)} stats={trendStats(s.values, perYear)} ahead={count} enough={enough} />
                 ))}
               </tbody>
               <tfoot>
