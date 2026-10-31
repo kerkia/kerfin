@@ -9,7 +9,7 @@ import pytest
 from kerfin_engine import vault as vault_module
 from kerfin_engine.domain import Account, AccountKind, Holding, Transaction
 from kerfin_engine.store import Store
-from kerfin_engine.vault import Vault, VaultError, WrongPassphrase
+from kerfin_engine.vault import Attempts, Vault, VaultError, WrongPassphrase
 
 PASSPHRASE = "correct horse battery"
 
@@ -50,6 +50,44 @@ def test_vault_rejects_short_passphrase_and_keeps_backup(tmp_path: Path) -> None
     vault.create(PASSPHRASE, b"v1")
     vault.save(b"v2")
     assert Vault(vault.path.with_suffix(".bak")).unlock(PASSPHRASE) == b"v1"
+
+
+def test_changing_the_passphrase_reencrypts_the_backup_too(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "kerfin.vault")
+    vault.create(PASSPHRASE, b"v1")
+    with pytest.raises(WrongPassphrase):
+        vault.change_passphrase("not the passphrase", "new passphrase", b"v2")
+    with pytest.raises(VaultError):
+        vault.change_passphrase(PASSPHRASE, "short", b"v2")
+
+    vault.change_passphrase(PASSPHRASE, "new passphrase", b"v2")
+    for path in (vault.path, vault.path.with_suffix(".bak")):
+        with pytest.raises(WrongPassphrase):
+            Vault(path).unlock(PASSPHRASE)
+        assert Vault(path).unlock("new passphrase") == b"v2"
+
+
+def test_wrong_passphrases_make_the_user_wait_longer_each_time(tmp_path: Path) -> None:
+    now = [1000.0]
+    attempts = Attempts(tmp_path / "attempts.json", clock=lambda: now[0])
+    attempts.failed()
+    attempts.failed()
+    assert attempts.wait() == 0
+    attempts.failed()
+    assert attempts.wait() == 6 * 60
+    now[0] += 6 * 60
+    assert attempts.wait() == 0
+    attempts.failed()
+    assert attempts.wait() == 12 * 60
+    # Kept on disk: restarting doesn't end the wait.
+    assert Attempts(attempts.path, clock=lambda: now[0]).wait() == 12 * 60
+    now[0] += 12 * 60
+    attempts.failed()
+    assert attempts.wait() == 24 * 60
+    attempts.succeeded()
+    assert attempts.wait() == 0
+    attempts.failed()
+    assert attempts.wait() == 0
 
 
 def _sync(store: Store, connection_id: str, balance: str, day: date) -> None:

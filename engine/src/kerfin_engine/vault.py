@@ -8,10 +8,14 @@ memory while the vault is unlocked. The passphrase cannot be recovered.
 from __future__ import annotations
 
 import base64
+import hmac
 import json
+import math
 import os
 import shutil
 import struct
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +26,9 @@ from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 MAGIC = b"KERFIN\x00\x01"
 # OWASP-recommended Argon2id settings; about half a second on a laptop.
 DEFAULT_KDF = {"kdf": "argon2id", "memory_cost": 65536, "iterations": 3, "lanes": 4}
-MIN_PASSPHRASE_LENGTH = 10
+MIN_PASSPHRASE_LENGTH = 8
+FREE_ATTEMPTS = 3  # wrong passphrases in a row before Kerfin makes the user wait
+FIRST_WAIT = 6 * 60  # seconds after the third; doubled at each wrong passphrase after that
 
 
 class VaultError(Exception):
@@ -31,6 +37,11 @@ class VaultError(Exception):
 
 class WrongPassphrase(VaultError):
     pass
+
+
+def check_length(passphrase: str) -> None:
+    if len(passphrase) < MIN_PASSPHRASE_LENGTH:
+        raise VaultError(f"The passphrase needs at least {MIN_PASSPHRASE_LENGTH} characters")
 
 
 def derive_key(passphrase: str, header: dict[str, Any]) -> bytes:
@@ -83,11 +94,23 @@ class Vault:
     def create(self, passphrase: str, data: bytes) -> None:
         if self.exists:
             raise VaultError("A vault already exists")
-        if len(passphrase) < MIN_PASSPHRASE_LENGTH:
-            raise VaultError(f"The passphrase needs at least {MIN_PASSPHRASE_LENGTH} characters")
+        check_length(passphrase)
         self._header = {**DEFAULT_KDF, "salt": base64.b64encode(os.urandom(16)).decode()}
         self._key = derive_key(passphrase, self._header)
         self.save(data)
+
+    def change_passphrase(self, current: str, new: str, data: bytes) -> None:
+        """Encrypts the vault, backup included, under a new passphrase and a new salt."""
+        if self._key is None or self._header is None:
+            raise VaultError("The vault is locked")
+        if not hmac.compare_digest(derive_key(current, self._header), self._key):
+            raise WrongPassphrase()
+        check_length(new)
+        self._header = {**DEFAULT_KDF, "salt": base64.b64encode(os.urandom(16)).decode()}
+        self._key = derive_key(new, self._header)
+        self.save(data)
+        # The backup just made still opens with the old passphrase.
+        shutil.copy2(self.path, self.path.with_suffix(".bak"))
 
     def unlock(self, passphrase: str) -> bytes:
         header, prefix, nonce, ciphertext = parse(self.path.read_bytes())
@@ -117,3 +140,38 @@ class Vault:
         # Python can't wipe memory; dropping the references is the best we can do.
         self._key = None
         self._header = None
+
+
+class Attempts:
+    """Wrong passphrases in a row, kept on disk so that restarting Kerfin doesn't end a wait.
+
+    This only slows down guessing through Kerfin. Someone holding a copy of the vault file
+    tries passphrases on their own machines, where only the passphrase's strength counts.
+    """
+
+    def __init__(self, path: Path, clock: Callable[[], float] = time.time) -> None:
+        self.path = path
+        self.clock = clock  # replaced in tests
+
+    def _read(self) -> tuple[int, float]:
+        try:
+            saved = json.loads(self.path.read_text(encoding="utf-8"))
+            return int(saved["failures"]), float(saved["until"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return 0, 0.0
+
+    def wait(self) -> int:
+        """Seconds before the next passphrase may be tried."""
+        _failures, until = self._read()
+        return max(0, math.ceil(until - self.clock()))
+
+    def failed(self) -> None:
+        failures, until = self._read()
+        failures += 1
+        if failures >= FREE_ATTEMPTS:
+            until = self.clock() + FIRST_WAIT * 2 ** min(failures - FREE_ATTEMPTS, 20)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps({"failures": failures, "until": until}), encoding="utf-8")
+
+    def succeeded(self) -> None:
+        self.path.unlink(missing_ok=True)

@@ -3,9 +3,10 @@ import { getVersion } from "@tauri-apps/api/app";
 import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
-import { engine } from "../engine";
-import { t } from "../i18n";
+import { EngineError, engine } from "../engine";
+import { errorText, t } from "../i18n";
 import type { useUpdater } from "../updater";
+import { MIN_LENGTH, useUnlockWait } from "./VaultScreen";
 
 const AUTO_LOCK_CHOICES = [5, 15, 30, 60];
 
@@ -61,6 +62,8 @@ export function Settings({
         </div>
       </section>
 
+      <ChangePassphrase status={status} onStatus={onStatus} />
+
       <section className="card form">
         <h2>{t("settings.updates")}</h2>
         {updater.state.kind === "unsupported" ? (
@@ -94,5 +97,96 @@ export function Settings({
         </p>
       </section>
     </>
+  );
+}
+
+function ChangePassphrase({ status, onStatus }: { status: EngineStatus; onStatus: (status: EngineStatus) => void }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const unlockWait = useUnlockWait(status.unlock_wait);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setDone(false);
+    if (next !== confirm) {
+      setError(t("vault.mismatch"));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      onStatus(await engine.changePassphrase(current, next));
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setDone(true);
+    } catch (e) {
+      const code = e instanceof EngineError ? e.code : "unexpected";
+      if (code === "wrong_passphrase" || code === "too_many_attempts") await unlockWait.restart();
+      setError(
+        code === "wrong_passphrase"
+          ? t("vault.wrong")
+          : code === "too_many_attempts"
+            ? null
+            : (e as EngineError).detail || errorText(code),
+      );
+    }
+    setBusy(false);
+  }
+
+  return (
+    <form className="card form" onSubmit={submit}>
+      <h2>{t("settings.passphrase")}</h2>
+      <div className="field" style={{ maxWidth: 320 }}>
+        <label htmlFor="current-passphrase">{t("settings.currentPassphrase")}</label>
+        <input
+          id="current-passphrase"
+          className="input"
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+        />
+      </div>
+      <div className="field" style={{ maxWidth: 320 }}>
+        <label htmlFor="new-passphrase">{t("settings.newPassphrase")}</label>
+        <input
+          id="new-passphrase"
+          className="input"
+          type="password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+        <span className="muted small">{t("vault.minLength", { n: MIN_LENGTH })}</span>
+      </div>
+      <div className="field" style={{ maxWidth: 320 }}>
+        <label htmlFor="confirm-passphrase">{t("settings.confirmPassphrase")}</label>
+        <input
+          id="confirm-passphrase"
+          className="input"
+          type="password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
+      </div>
+      {error && <div className="error-text">{error}</div>}
+      {unlockWait.message && <div className="error-text">{unlockWait.message}</div>}
+      {done && <p style={{ margin: 0 }}>{t("settings.passphraseChanged")}</p>}
+      <div>
+        <button
+          className="btn"
+          type="submit"
+          disabled={busy || !current || next.length < MIN_LENGTH || !confirm || unlockWait.left > 0}
+        >
+          {t("settings.changePassphrase")}
+        </button>
+      </div>
+    </form>
   );
 }

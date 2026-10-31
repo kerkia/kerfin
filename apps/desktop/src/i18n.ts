@@ -19,6 +19,7 @@ const en = {
   "vault.unlockIntro": "Enter your passphrase to open your data.",
   "vault.unlock": "Unlock",
   "vault.wrong": "Wrong passphrase.",
+  "vault.wait": "Too many wrong passphrases: try again in {time}. Each wrong one from now on doubles the wait.",
 
   "nav.overview": "Overview",
   "nav.accounts": "Accounts",
@@ -494,6 +495,12 @@ const en = {
   "settings.autoLock": "Lock automatically after",
   "settings.minutes": "{n} minutes",
   "settings.lockNow": "Lock now",
+  "settings.passphrase": "Passphrase",
+  "settings.currentPassphrase": "Current passphrase",
+  "settings.newPassphrase": "New passphrase",
+  "settings.confirmPassphrase": "Confirm the new passphrase",
+  "settings.changePassphrase": "Change passphrase",
+  "settings.passphraseChanged": "Passphrase changed: use the new one from now on.",
   "settings.storage":
     "Your data is encrypted with your passphrase and stays on this computer. Nothing is sent anywhere except to the institutions you connect.",
   "settings.about": "About",
@@ -587,6 +594,7 @@ const errors: Record<string, string> = {
   not_supported: "this isn't supported for this institution",
   connector_unavailable: "this institution can't be connected yet",
   invalid_input: "a value has the wrong format",
+  too_many_attempts: "too many wrong passphrases: wait, then try again",
   engine_unreachable: "Kerfin's engine is not responding",
   unexpected: "an unexpected error occurred",
 };
@@ -645,6 +653,14 @@ export function shortDate(iso: string): string {
 
 export function longDate(iso: string): string {
   return new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium" }).format(new Date(iso));
+}
+
+/** Seconds left as m:ss, or h:mm:ss from an hour. */
+export function countdown(seconds: number): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours ? `${hours}:${pad(minutes)}:${pad(seconds % 60)}` : `${minutes}:${pad(seconds % 60)}`;
 }
 
 export function ago(iso: string): string {

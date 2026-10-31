@@ -47,7 +47,9 @@ export function App() {
     );
   }
   if (!status) return <CenterMessage text={t("app.loading")} spinner />;
-  if (status.vault !== "unlocked") return <VaultScreen mode={status.vault} onDone={setStatus} />;
+  if (status.vault !== "unlocked") {
+    return <VaultScreen mode={status.vault} wait={status.unlock_wait} onDone={setStatus} />;
+  }
   return <Shell status={status} onStatus={setStatus} updater={updater} />;
 }
 

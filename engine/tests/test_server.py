@@ -79,6 +79,35 @@ def test_vault_lifecycle(api: Any) -> None:
     assert api("POST", "/api/vault/unlock", {"passphrase": PASSPHRASE})["vault"] == "unlocked"
 
 
+def test_wrong_passphrases_lock_out_unlocking(api: Any) -> None:
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    api("POST", "/api/vault/lock")
+    for _ in range(3):
+        assert api("POST", "/api/vault/unlock", {"passphrase": "wrong one!!"})["status"] == 401
+    assert 0 < api("GET", "/api/status")["unlock_wait"] <= 6 * 60
+    # Even the right passphrase waits, and isn't tried.
+    refused = api("POST", "/api/vault/unlock", {"passphrase": PASSPHRASE})
+    assert (refused["status"], refused["error"]["code"]) == (429, "too_many_attempts")
+
+    api.server.app.attempts.succeeded()  # as if the wait were over
+    assert api("POST", "/api/vault/unlock", {"passphrase": PASSPHRASE})["vault"] == "unlocked"
+    assert api("GET", "/api/status")["unlock_wait"] == 0
+
+
+def test_change_passphrase(api: Any) -> None:
+    change = {"current": PASSPHRASE, "passphrase": "new one!"}
+    assert api("POST", "/api/vault/passphrase", change)["status"] == 423
+    api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
+    wrong = api("POST", "/api/vault/passphrase", {**change, "current": "wrong one!!"})
+    assert wrong["error"]["code"] == "wrong_passphrase"
+    short = api("POST", "/api/vault/passphrase", {**change, "passphrase": "short"})
+    assert short["error"]["code"] == "invalid_passphrase"
+    assert api("POST", "/api/vault/passphrase", change)["vault"] == "unlocked"
+    api("POST", "/api/vault/lock")
+    assert api("POST", "/api/vault/unlock", {"passphrase": PASSPHRASE})["status"] == 401
+    assert api("POST", "/api/vault/unlock", {"passphrase": "new one!"})["vault"] == "unlocked"
+
+
 def test_add_connection_with_sms_code(api: Any) -> None:
     api("POST", "/api/vault/create", {"passphrase": PASSPHRASE})
     fields = api("GET", "/api/institutions/demo/fields")

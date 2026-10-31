@@ -178,4 +178,6 @@ export interface EngineStatus {
   vault: "missing" | "locked" | "unlocked";
   version: string;
   auto_lock_minutes: number | null;
+  /** Seconds before a passphrase may be tried again, after too many wrong ones. */
+  unlock_wait: number;
 }

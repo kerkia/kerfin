@@ -83,6 +83,8 @@ export const engine = {
   createVault: (passphrase: string) => call<EngineStatus>("POST", "/api/vault/create", { passphrase }),
   unlock: (passphrase: string) => call<EngineStatus>("POST", "/api/vault/unlock", { passphrase }),
   lock: () => call<EngineStatus>("POST", "/api/vault/lock"),
+  changePassphrase: (current: string, passphrase: string) =>
+    call<EngineStatus>("POST", "/api/vault/passphrase", { current, passphrase }),
 
   institutions: () => call<Institution[]>("GET", "/api/institutions"),
   fields: (institution: string) => call<Prompt[]>("GET", `/api/institutions/${institution}/fields`),

@@ -3,9 +3,38 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 
 import { EngineError, engine } from "../engine";
-import { errorText, t } from "../i18n";
+import { countdown, errorText, t } from "../i18n";
 
-const MIN_LENGTH = 10; // kerfin_engine.vault.MIN_PASSPHRASE_LENGTH
+export const MIN_LENGTH = 8; // kerfin_engine.vault.MIN_PASSPHRASE_LENGTH
+
+/**
+ * Seconds left before a passphrase may be tried again, counted down from what the engine
+ * said; `restart` takes a new figure from it after a wrong passphrase.
+ */
+export function useUnlockWait(seconds: number) {
+  const [until, setUntil] = useState(() => Date.now() + seconds * 1000);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    setUntil(Date.now() + seconds * 1000);
+    setNow(Date.now());
+  }, [seconds]);
+  const left = Math.max(0, Math.ceil((until - now) / 1000));
+  const waiting = left > 0;
+  useEffect(() => {
+    if (!waiting) return;
+    // From the clock, not by counting ticks: timers slow down while the window is hidden.
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [waiting]);
+  const restart = async () => {
+    const status = await engine.status().catch(() => null);
+    if (status) {
+      setUntil(Date.now() + status.unlock_wait * 1000);
+      setNow(Date.now());
+    }
+  };
+  return { left, message: waiting ? t("vault.wait", { time: countdown(left) }) : null, restart };
+}
 
 /**
  * Puts the cursor in the passphrase field. At launch the window itself doesn't have the
@@ -35,9 +64,11 @@ function useStartFocus(input: React.RefObject<HTMLInputElement | null>) {
 
 export function VaultScreen({
   mode,
+  wait,
   onDone,
 }: {
   mode: "missing" | "locked";
+  wait: number;
   onDone: (status: EngineStatus) => void;
 }) {
   const creating = mode === "missing";
@@ -47,6 +78,7 @@ export function VaultScreen({
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const unlockWait = useUnlockWait(wait);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -60,7 +92,14 @@ export function VaultScreen({
       onDone(creating ? await engine.createVault(passphrase) : await engine.unlock(passphrase));
     } catch (e) {
       const code = e instanceof EngineError ? e.code : "unexpected";
-      setError(code === "wrong_passphrase" ? t("vault.wrong") : (e as EngineError).detail || errorText(code));
+      if (code === "wrong_passphrase" || code === "too_many_attempts") await unlockWait.restart();
+      setError(
+        code === "wrong_passphrase"
+          ? t("vault.wrong")
+          : code === "too_many_attempts"
+            ? null
+            : (e as EngineError).detail || errorText(code),
+      );
       setBusy(false);
     }
   }
@@ -105,9 +144,10 @@ export function VaultScreen({
           </div>
         )}
         {error && <div className="error-text">{error}</div>}
+        {!creating && unlockWait.message && <div className="error-text">{unlockWait.message}</div>}
         <button
           className="btn primary"
-          disabled={busy || passphrase.length < (creating ? MIN_LENGTH : 1)}
+          disabled={busy || passphrase.length < (creating ? MIN_LENGTH : 1) || (!creating && unlockWait.left > 0)}
           type="submit"
         >
           {creating ? t("vault.create") : t("vault.unlock")}

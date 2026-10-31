@@ -5,7 +5,8 @@ Security model:
 - every request must carry the token the desktop shell generated for this launch;
 - the Host header must name the loopback address (no DNS rebinding from web pages);
 - responses are never cached (WebView2 would otherwise write them to disk in clear);
-- the vault locks itself after a period without user activity.
+- the vault locks itself after a period without user activity;
+- after three wrong passphrases in a row, each attempt waits longer (see vault.Attempts).
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from kerfin_engine.domain import AccountKind
 from kerfin_engine.market import MarketData, index_profiles
 from kerfin_engine.store import Store
 from kerfin_engine.sync import SyncService
-from kerfin_engine.vault import Vault, VaultError, WrongPassphrase
+from kerfin_engine.vault import Attempts, Vault, VaultError, WrongPassphrase
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ class App:
     def __init__(self, data_dir: Path, market: Callable[[Store], MarketData] = MarketData) -> None:
         self.market = market  # replaced in tests, which mustn't reach the internet
         self.vault = Vault(data_dir / "kerfin.vault")
+        self.attempts = Attempts(data_dir / "unlock-attempts.json")
         self.store: Store | None = None
         self.sync: SyncService | None = None
         self.last_activity = time.monotonic()
@@ -148,6 +150,7 @@ class App:
             "vault": state,
             "version": engine_version(),
             "auto_lock_minutes": self.auto_lock_minutes if self.store else None,
+            "unlock_wait": self.attempts.wait(),
         }
 
     def create(self, passphrase: str) -> None:
@@ -165,10 +168,31 @@ class App:
                 return
             if not self.vault.exists:
                 raise ApiError(HTTPStatus.CONFLICT, "vault_missing")
+            self._check_attempts()
             try:
                 self._open(Store.load(self.vault.unlock(passphrase)))
             except WrongPassphrase:
+                self.attempts.failed()
                 raise ApiError(HTTPStatus.UNAUTHORIZED, "wrong_passphrase") from None
+            self.attempts.succeeded()
+
+    def change_passphrase(self, current: str, new: str) -> None:
+        with self._lock:
+            store, _sync = self.unlocked()
+            self._check_attempts()
+            try:
+                self.vault.change_passphrase(current, new, store.dump())
+            except WrongPassphrase:
+                self.attempts.failed()
+                raise ApiError(HTTPStatus.UNAUTHORIZED, "wrong_passphrase") from None
+            except VaultError as error:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_passphrase", str(error)) from error
+            self.attempts.succeeded()
+
+    def _check_attempts(self) -> None:
+        # Refused before deriving the key, so a wait costs no guess.
+        if self.attempts.wait():
+            raise ApiError(HTTPStatus.TOO_MANY_REQUESTS, "too_many_attempts")
 
     def _open(self, store: Store) -> None:
         self.store = store
@@ -285,6 +309,12 @@ def create_vault(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
 @route("POST", "/api/vault/unlock")
 def unlock_vault(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
     app.unlock(_str(body, "passphrase"))
+    return app.status()
+
+
+@route("POST", "/api/vault/passphrase")
+def change_passphrase(app: App, _: re.Match[str], body: dict[str, Any]) -> Any:
+    app.change_passphrase(_str(body, "current"), _str(body, "passphrase"))
     return app.status()
 
 

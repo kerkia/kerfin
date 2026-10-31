@@ -44,11 +44,16 @@ Desktop app (Tauri, apps/desktop)
 
 - **Vault.** All data, credentials included, is one file encrypted with AES-256-GCM under a
   key derived from the user's passphrase with Argon2id (64 MiB, 3 passes). The database only
-  exists in memory while unlocked; nothing is written in clear. The passphrase can't be
-  recovered. Passwords are stored only if the user ticks "remember"; otherwise each sync
-  asks for them.
+  exists in memory while unlocked; nothing is written in clear. The passphrase has at least
+  8 characters and can't be recovered; Settings changes it, re-encrypting the vault and its
+  backup under a new salt. Passwords are stored only if the user ticks "remember"; otherwise
+  each sync asks for them.
 - **Locking.** The vault locks after 15 minutes without activity (configurable) and when
-  the app closes.
+  the app closes. After 3 wrong passphrases in a row (unlocking or changing it), the engine
+  refuses any for 6 minutes, then twice as long after each new wrong one; the count is kept
+  next to the vault, so restarting doesn't end the wait. This only slows guessing through
+  Kerfin: a copy of the vault file can be attacked offline, where only the passphrase's
+  strength and Argon2id's cost count.
 - **Local API.** The engine listens on 127.0.0.1 only, on a random port, and requires a
   token the shell generates at each launch. It rejects requests whose Host isn't the
   loopback address (DNS rebinding) and marks every response `no-store`, so the WebView's
