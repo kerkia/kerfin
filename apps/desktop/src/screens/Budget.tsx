@@ -19,7 +19,7 @@ import type { AccountTransaction, Categorised, CategoryDef, Flow, SplitBy, Step,
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
-import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored } from "../components/Period";
+import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored, storedRange, useKept } from "../components/Period";
 import type { Preset } from "../components/Period";
 import { Donut, DonutLegend, TrendChart, donutSlices } from "../components/charts";
 import type { TrendSeries } from "../components/charts";
@@ -61,12 +61,13 @@ export function BudgetPage() {
   const [rules, setRules] = useState<Record<string, string>>({});
   const [categories, setCategories] = useState<CategoryDef[]>(DEFAULT_CATEGORIES);
   const [editing, setEditing] = useState(false);
-  const [unselected, setUnselected] = useState<Set<string>>(new Set());
-  const [categoriesOut, setCategoriesOut] = useState<Set<string>>(new Set());
-  const [payeesOut, setPayeesOut] = useState<Set<string>>(new Set());
+  // As they were after locking and unlocking.
+  const [unselected, setUnselected] = useKept<Set<string>>("budget.accountsOut", () => new Set());
+  const [categoriesOut, setCategoriesOut] = useKept<Set<string>>("budget.categoriesOut", () => new Set());
+  const [payeesOut, setPayeesOut] = useKept<Set<string>>("budget.payeesOut", () => new Set());
   const [preset, setPreset] = useState<Preset>(() => stored("kerfin.budgetRange", PRESETS, "12"));
   const today = localToday();
-  const [custom, setCustom] = useState(() => lastMonths(today, 3));
+  const [custom, setCustom] = useState(() => storedRange("kerfin.budgetRange", lastMonths(today, 3)));
   const [split, setSplit] = useState<SplitBy>(() => stored("kerfin.budgetSplit", SPLITS, "total"));
   const [ahead, setAhead] = useState(() => stored("kerfin.budgetAhead", AHEAD, "6"));
   const [every, setEvery] = useState(() => stored("kerfin.budgetEvery", EVERY, "auto"));
@@ -212,7 +213,19 @@ export function BudgetPage() {
   const { base, main, forAccounts, forCategories, forPayees, analysis } = figures;
   const saved = base.income - base.spending;
   const totalSpent = main.months.reduce((sum, m) => sum + m.spending, 0);
-  const averageHelp = main.full ? t("budget.averageOver", { n: main.full }) : t("budget.averagePartial");
+  // Which months the averages cover, and the month under way they leave out.
+  const [firstFull, lastFull] = [main.fullMonths[0], main.fullMonths.at(-1)];
+  const lastMonth = main.months.at(-1)?.month;
+  const averageHelp = [
+    !firstFull || !lastFull
+      ? t("budget.averagePartial")
+      : firstFull === lastFull
+        ? t("budget.averageMonth", { month: monthName(firstFull, true) })
+        : t("budget.averageOver", { from: monthName(firstFull, true), to: monthName(lastFull, true) }),
+    lastMonth === today.slice(0, 7) && lastMonth !== lastFull ? t("budget.underWay", { month: monthName(lastMonth) }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const filtered = categoriesOut.size > 0 || payeesOut.size > 0;
 
   // The chart's lines: the largest named, in the list's order so a line keeps its color as

@@ -79,6 +79,7 @@ describe("budget", () => {
 
   it("averages the months that are over", () => {
     expect(result.full).toBe(2);
+    expect(result.fullMonths).toEqual(["2026-08", "2026-09"]);
     expect(result.income).toBe(3000);
     expect(result.spending).toBe(1000);
   });

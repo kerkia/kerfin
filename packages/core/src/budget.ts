@@ -41,6 +41,7 @@ export interface Flow {
 export interface Budget {
   months: BudgetMonth[]; // the range's calendar months, oldest first
   full: number; // the months the range covers whole and that are over, which the averages cover
+  fullMonths: string[]; // those months (YYYY-MM), oldest first
   income: number; // a month on average, over the full months
   spending: number;
   categories: Slice[]; // spending by category over the months, largest first
@@ -165,6 +166,7 @@ export function budget(
   return {
     months,
     full,
+    fullMonths: whole.map((m) => m.month),
     income: average("income"),
     spending: average("spending"),
     categories: [...totals]

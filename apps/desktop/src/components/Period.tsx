@@ -1,7 +1,7 @@
 // The period a budget page covers: the last months (counted with the current one), this year,
 // last year, all the transactions, or dates the user picks. Each page remembers its own choice.
 import { lastMonths } from "@kerfin/core";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { t } from "../i18n";
 
@@ -29,6 +29,34 @@ export function remember(key: string, value: string) {
   } catch {
     // a convenience only
   }
+}
+
+/** The dates last picked under `key`, else `fallback`. */
+export function storedRange(key: string, fallback: Range): Range {
+  try {
+    const value = JSON.parse(localStorage.getItem(`${key}.dates`) ?? "null");
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    return date.test(value?.from) && date.test(value?.to) ? { from: value.from, to: value.to } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Kept in memory while Kerfin runs, through locking (which leaves the pages), but not on
+// disk: filters name payees.
+const kept = new Map<string, unknown>();
+
+/** A state that comes back as it was when its page comes back, until Kerfin quits. */
+export function useKept<T>(key: string, initial: () => T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => (kept.has(key) ? (kept.get(key) as T) : initial()));
+  const set = useCallback(
+    (next: T) => {
+      kept.set(key, next);
+      setValue(next);
+    },
+    [key],
+  );
+  return [value, set];
 }
 
 /** The period's dates; "all" starts with `first`, the earliest transaction's date. */
@@ -83,6 +111,10 @@ export function PeriodPicker({
   onPreset: (preset: Preset) => void;
   onCustom: (custom: Range) => void;
 }) {
+  const pick = (dates: Range) => {
+    onCustom(dates);
+    remember(`${storageKey}.dates`, JSON.stringify(dates));
+  };
   return (
     <>
       <select
@@ -91,7 +123,7 @@ export function PeriodPicker({
         value={preset}
         onChange={(e) => {
           const value = e.target.value as Preset;
-          if (value === "custom") onCustom(range);
+          if (value === "custom") pick(range);
           onPreset(value);
           remember(storageKey, value);
         }}
@@ -108,10 +140,10 @@ export function PeriodPicker({
             label={t("budget.from")}
             value={custom.from}
             max={custom.to}
-            onChange={(from) => onCustom({ ...custom, from })}
+            onChange={(from) => pick({ ...custom, from })}
           />
           <span className="muted">–</span>
-          <DateField label={t("budget.to")} value={custom.to} min={custom.from} onChange={(to) => onCustom({ ...custom, to })} />
+          <DateField label={t("budget.to")} value={custom.to} min={custom.from} onChange={(to) => pick({ ...custom, to })} />
         </>
       )}
     </>
