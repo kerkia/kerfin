@@ -509,7 +509,8 @@ const en = {
   "settings.version": "Version {app} (engine {engine})",
   "settings.updates": "Updates",
   "settings.checkUpdates": "Check for updates",
-  "settings.upToDate": "Kerfin is up to date.",
+  "settings.checking": "Checking…",
+  "settings.upToDate": "Kerfin is up to date (checked at {time}).",
   "settings.updatesDev": "Updates are only available in the installed app.",
 
   "update.available": "Kerfin {version} is ready.",
@@ -655,6 +656,10 @@ export function shortDate(iso: string): string {
 
 export function longDate(iso: string): string {
   return new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium" }).format(new Date(iso));
+}
+
+export function timeOfDay(date: Date): string {
+  return new Intl.DateTimeFormat(LOCALE, { timeStyle: "medium" }).format(date);
 }
 
 /** Seconds left as m:ss, or h:mm:ss from an hour. */

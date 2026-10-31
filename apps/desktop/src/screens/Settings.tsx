@@ -4,7 +4,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 
 import { EngineError, engine } from "../engine";
-import { errorText, t } from "../i18n";
+import { errorText, t, timeOfDay } from "../i18n";
 import type { useUpdater } from "../updater";
 import { MIN_LENGTH, useUnlockWait } from "./VaultScreen";
 
@@ -20,15 +20,19 @@ export function Settings({
   updater: ReturnType<typeof useUpdater>;
 }) {
   const [appVersion, setAppVersion] = useState("dev");
-  const [checked, setChecked] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     if (isTauri()) getVersion().then(setAppVersion, () => undefined);
   }, []);
 
   async function checkUpdates() {
-    await updater.checkNow();
-    setChecked(true);
+    setChecking(true);
+    // Shown for a moment at least: an instant answer would look like nothing happened.
+    await Promise.all([updater.checkNow(), new Promise((resolve) => setTimeout(resolve, 600))]);
+    setChecking(false);
+    setCheckedAt(new Date());
   }
 
   return (
@@ -80,10 +84,12 @@ export function Settings({
                 {t("update.failed", { error: updater.state.message })}
               </p>
             )}
-            {checked && updater.state.kind === "idle" && <p style={{ margin: 0 }}>{t("settings.upToDate")}</p>}
+            {checkedAt && !checking && updater.state.kind === "idle" && (
+              <p style={{ margin: 0 }}>{t("settings.upToDate", { time: timeOfDay(checkedAt) })}</p>
+            )}
             <div>
-              <button className="btn" onClick={() => void checkUpdates()}>
-                {t("settings.checkUpdates")}
+              <button className="btn" disabled={checking} onClick={() => void checkUpdates()}>
+                {checking ? t("settings.checking") : t("settings.checkUpdates")}
               </button>
             </div>
           </>
