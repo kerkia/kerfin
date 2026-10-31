@@ -1174,10 +1174,13 @@ th:hover .sort-mark.idle {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
-@media (min-width: 1700px) {
+/* The categories' shares beside the chart; the statistics under both, across. */
+@media (min-width: 1200px) {
   .budget-analysis {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-    align-items: start;
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+  .budget-analysis > .budget-stats {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 1100px) {

@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CategoryEditor } from "../components/CategoryEditor";
 import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored } from "../components/Period";
 import type { Preset } from "../components/Period";
-import { TrendChart } from "../components/charts";
+import { Donut, DonutLegend, TrendChart, donutSlices } from "../components/charts";
 import type { TrendSeries } from "../components/charts";
 import { useData } from "../data";
 import { engine } from "../engine";
@@ -72,6 +72,7 @@ export function BudgetPage() {
   const [every, setEvery] = useState(() => stored("kerfin.budgetEvery", EVERY, "auto"));
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: "date", descending: true });
   const [shown, setShown] = useState(PAGE);
+  const [activeShare, setActiveShare] = useState<string | null>(null);
 
   const load = useCallback(() => {
     engine.transactions().then(
@@ -227,7 +228,7 @@ export function BudgetPage() {
     key === "total"
       ? t("analysis.total")
       : key === OTHER
-        ? t("analysis.other")
+        ? t(split === "category" ? "budget.smaller" : "analysis.other")
         : split === "account"
           ? (labels.get(key) ?? key)
           : nameOf(key);
@@ -256,6 +257,18 @@ export function BudgetPage() {
     values: line.values,
     projected: projecting && split !== "total" ? onwards(line.values) : undefined,
   }));
+  // The categories' shares of the spending, colored as the chart's lines by category: the
+  // largest named in the list's order, the rest as "Other".
+  const slices = donutSlices(
+    main.categories.map((c) => ({ key: c.key, label: nameOf(c.key), value: c.value })),
+    // Not "Other": a category is named so.
+    t("budget.smaller"),
+  );
+  const sliceOrder = categories.map((c) => c.key).filter((key) => slices.some((s) => s.key === key));
+  const shares = slices.map((s) =>
+    s.key === OTHER || !sliceOrder.includes(s.key) ? s : { ...s, color: `var(--series-${sliceOrder.indexOf(s.key) + 1})` },
+  );
+  const sharesTotal = shares.reduce((sum, s) => sum + s.value, 0);
   // Over more than a year, the axis names the years too.
   const longRange = points.length + future.length > perYear;
   const pointLabel = (point: string) =>
@@ -497,6 +510,31 @@ export function BudgetPage() {
         </section>
 
         <section className="card">
+          <div className="card-header">
+            <h2>{t("budget.shares")}</h2>
+          </div>
+          {shares.length === 0 ? (
+            <p className="muted" style={{ margin: 0 }}>
+              {t("analysis.nothing")}
+            </p>
+          ) : (
+            <div className="allocation stacked">
+              <Donut
+                slices={shares}
+                total={whole(sharesTotal)}
+                totalLabel={t("budget.spentInRange")}
+                active={activeShare}
+                onActive={setActiveShare}
+              />
+              <DonutLegend slices={shares} active={activeShare} onActive={setActiveShare} showValues />
+            </div>
+          )}
+          <p className="muted small" style={{ margin: "10px 0 0" }}>
+            {t("budget.sharesHelp")}
+          </p>
+        </section>
+
+        <section className="card budget-stats">
           <div className="card-header">
             <h2>{t("analysis.statistics")}</h2>
           </div>

@@ -74,7 +74,7 @@ const en = {
   "analysis.chartHelp":
     "The dashed line is the trend (the straight line closest to the points); past the last complete one it continues as the projection, and the band shows where points fell around the trend (± one standard deviation). Each point is a month or a week (Auto: weeks over periods up to six months); the one under way is left out until it is over.",
   "analysis.chartHelpSplit":
-    "The largest lines are named; the rest are added up as Other. Past the last complete point, each line goes on dashed as its own trend's projection; their statistics are in the table below. Each point is a month or a week (Auto: weeks over periods up to six months); the one under way is left out until it is over.",
+    "The largest lines are named; the rest are added up together. Past the last complete point, each line goes on dashed as its own trend's projection; their statistics are in the table below. Each point is a month or a week (Auto: weeks over periods up to six months); the one under way is left out until it is over.",
   "analysis.statistics": "Statistics",
   "analysis.col.total": "Spent",
   "analysis.col.stdev": "Std deviation",
@@ -163,6 +163,9 @@ const en = {
   "budget.badRange": "The start date is after the end date.",
   "budget.averagePartial": "Over the dates picked (no whole month)",
   "budget.spentInRange": "Spent over the period",
+  "budget.shares": "Spending by category",
+  "budget.smaller": "Smaller categories",
+  "budget.sharesHelp": "Each category's share of the spending over the period, from the accounts, categories and payees selected. Refunds count against their category.",
   "budget.rangeDates": "{from} – {to}",
   "budget.payee": "Payee",
   "budget.allCategories": "All categories",
