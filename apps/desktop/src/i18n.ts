@@ -519,7 +519,7 @@ const en = {
   "settings.updatesDev": "Updates are only available in the installed app.",
 
   "update.available": "Kerfin {version} is ready.",
-  "settings.updateReady": "Kerfin {version} is ready: restart from the bar at the top of the window.",
+  "settings.updateReady": "Kerfin {version} is ready: restart Kerfin to install it, here or from the bar at the bottom of the window.",
   "update.install": "Restart to update",
   "zoom.label": "Zoom",
   "crash.title": "This page ran into a problem",

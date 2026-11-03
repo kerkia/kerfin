@@ -77,7 +77,14 @@ export function Settings({
         ) : (
           <>
             {updater.state.kind === "available" && (
-              <p style={{ margin: 0 }}>{t("settings.updateReady", { version: updater.state.version })}</p>
+              <>
+                <p style={{ margin: 0 }}>{t("settings.updateReady", { version: updater.state.version })}</p>
+                <div>
+                  <button className="btn primary" onClick={() => void updater.installNow()}>
+                    {t("update.install")}
+                  </button>
+                </div>
+              </>
             )}
             {updater.state.kind === "error" && (
               <p className="error-text" style={{ margin: 0 }}>
