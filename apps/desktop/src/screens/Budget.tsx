@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CategoryEditor } from "../components/CategoryEditor";
 import { PRESETS, PeriodPicker, localToday, rangeOf, remember, stored, storedRange } from "../components/Period";
-import type { Preset } from "../components/Period";
+import type { Preset, Range } from "../components/Period";
 import { Donut, DonutLegend, TrendChart, donutSlices } from "../components/charts";
 import type { TrendSeries } from "../components/charts";
 import { useData } from "../data";
@@ -118,11 +118,26 @@ export function BudgetPage() {
     const listed = new Set(transactions.map((tx) => tx.account_id));
     return overview.accounts.filter((a) => !a.hidden && listed.has(a.id));
   }, [overview, transactions]);
-  const first = useMemo(
-    () => transactions?.reduce<string | null>((min, tx) => (min === null || tx.date < min ? tx.date : min), null) ?? null,
-    [transactions],
-  );
-  const range = rangeOf(preset, today, custom, first);
+  // "All transactions": the dates over which every account picked has transactions, from the
+  // latest of their first to the earliest of their last; all their dates if they don't overlap.
+  const span = useMemo(() => {
+    const spans = new Map<string, Range>();
+    for (const tx of transactions ?? []) {
+      if (unselected.has(tx.account_id)) continue;
+      const day = tx.date.slice(0, 10);
+      const known = spans.get(tx.account_id);
+      if (!known) spans.set(tx.account_id, { from: day, to: day });
+      else if (day < known.from) known.from = day;
+      else if (day > known.to) known.to = day;
+    }
+    const picked = accounts.flatMap((a) => spans.get(a.id) ?? []);
+    if (!picked.length) return null;
+    const froms = picked.map((s) => s.from).sort();
+    const tos = picked.map((s) => s.to).sort();
+    const common = { from: froms.at(-1)!, to: tos[0]! };
+    return common.from <= common.to ? common : { from: froms[0]!, to: tos.at(-1)! };
+  }, [transactions, accounts, unselected]);
+  const range = rangeOf(preset, today, custom, span);
   const validRange = range.from <= range.to;
   const step: Step =
     every !== "auto" ? every : (Date.parse(range.to) - Date.parse(range.from)) / 86_400_000 <= WEEKLY_UP_TO ? "week" : "month";

@@ -42,12 +42,12 @@ export function storedRange(key: string, fallback: Range): Range {
   }
 }
 
-/** The period's dates; "all" starts with `first`, the earliest transaction's date. */
-export function rangeOf(preset: Preset, today: string, custom: Range, first?: string | null): Range {
+/** The period's dates; "all" is `span`, the dates the transactions cover. */
+export function rangeOf(preset: Preset, today: string, custom: Range, span?: Range | null): Range {
   const year = Number(today.slice(0, 4));
   if (preset === "year") return { from: `${year}-01-01`, to: today };
   if (preset === "lastYear") return { from: `${year - 1}-01-01`, to: `${year - 1}-12-31` };
-  if (preset === "all") return first && first < today ? { from: first.slice(0, 10), to: today } : lastMonths(today, 12);
+  if (preset === "all") return span ?? lastMonths(today, 12);
   if (preset === "custom") return custom;
   return lastMonths(today, Number(preset));
 }
